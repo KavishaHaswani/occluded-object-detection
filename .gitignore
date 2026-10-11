@@ -1,0 +1,10 @@
+.env
+cache/
+data/
+checkpoints/
+*.pth
+/kaggle_notebook/results
+/kaggle_notebook/results2
+/kaggle_notebook/results3
+kaggle_notebook/dl_err.txt
+kaggle_notebook/_list_out.py

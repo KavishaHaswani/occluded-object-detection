@@ -1,0 +1,23 @@
+{
+  "id": "kavishahaswani/occluded-object-detection",
+  "id_no": 135191212,
+  "title": "occluded-object-detection",
+  "code_file": "occluded-object-detection.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": true,
+  "keywords": [],
+  "dataset_sources": [
+    "ivanomelchenkoim11/moca-dataset",
+    "tanushkalokegaonkar/camouflaged-animal-dataset",
+    "tanushkalokegaonkar/msvcod",
+    "kavishahaswani/occluded-object-detection-code",
+    "tanushkalokegaonkar/yuv20k"
+  ],
+  "kernel_sources": [],
+  "competition_sources": [],
+  "model_sources": []
+}

@@ -1,0 +1,95 @@
+
+===== CELL 0 [code] =====
+# This Python 3 environment comes with many helpful analytics libraries installed
+# It is defined by the kaggle/python Docker image: https://github.com/kaggle/docker-python
+# For example, here's several helpful packages to load
+
+import numpy as np # linear algebra
+import pandas as pd # data processing, CSV file I/O (e.g. pd.read_csv)
+
+# Input data files are available in the read-only "../input/" directory
+# For example, running this (by clicking run or pressing Shift+Enter) will list all files under the input directory
+
+import os
+for dirname, _, filenames in os.walk('/kaggle/input'):
+    for filename in filenames:
+        print(os.path.join(dirname, filename))
+
+# You can write up to 20GB to the current directory (/kaggle/working/) that gets preserved as output when you create a version using "Save & Run All" 
+# You can also write temporary files to /kaggle/temp/, but they won't be saved outside of the current session
+
+# Use the kagglehub client library to attach Kaggle resources like competitions, datasets, and models to your session
+# Learn more about kagglehub: https://github.com/Kaggle/kagglehub/blob/main/README.md
+
+import kagglehub
+# kagglehub.dataset_download('<owner>/<dataset-slug>')
+
+===== CELL 1 [markdown] =====
+### Exploring dataset structures
+
+===== CELL 2 [code] =====
+# !ls /kaggle/input
+# !find /kaggle/input -maxdepth 5 -type d
+
+===== CELL 3 [code] =====
+# !find /kaggle/input/datasets/ivanomelchenkoim11/moca-dataset/MoCA/JPEGImages -maxdepth 2 | head -15
+# !find /kaggle/input/datasets/ivanomelchenkoim11/moca-dataset/MoCA/Annotations -maxdepth 2 | head -15
+
+===== CELL 4 [code] =====
+# !find /kaggle/input/datasets/tanushkalokegaonkar/camouflaged-animal-dataset/CamouflagedAnimalDataset/chameleon -maxdepth 2
+
+===== CELL 5 [code] =====
+# !find /kaggle/input/datasets/tanushkalokegaonkar/yuv20k/YUV20K/anole_1 -maxdepth 2
+
+===== CELL 6 [code] =====
+# !find /kaggle/input/datasets/tanushkalokegaonkar/msvcod/resources -maxdepth 3
+# !file /kaggle/input/datasets/tanushkalokegaonkar/msvcod/resources/* 2>/dev/null | head -10
+
+===== CELL 7 [code] =====
+# !head -20 /kaggle/input/datasets/ivanomelchenkoim11/moca-dataset/MoCA/Annotations/annotations.csv
+
+
+===== CELL 8 [code] =====
+# !find /kaggle/input/datasets -maxdepth 4
+
+===== CELL 9 [code] =====
+CODE_DIR = "/kaggle/input/datasets/kavishahaswani/occluded-object-detection-code"
+
+
+===== CELL 10 [code] =====
+# 1) Convert MoCA's CSV boxes into masks (one-time)
+!python {CODE_DIR}/convert_moca_csv_to_masks.py \
+    --moca_root /kaggle/input/datasets/ivanomelchenkoim11/moca-dataset/MoCA \
+    --output_root /kaggle/working/moca_converted
+
+
+===== CELL 11 [code] =====
+# 2) Preprocess all 3 usable datasets (amplify + flow, cached once)
+!python {CODE_DIR}/preprocess_amplify.py \
+    --data_roots cad=/kaggle/input/datasets/tanushkalokegaonkar/camouflaged-animal-dataset/CamouflagedAnimalDataset \
+                 yuv20k=/kaggle/input/datasets/tanushkalokegaonkar/yuv20k/YUV20K \
+                 moca=/kaggle/working/moca_converted \
+    --cache_root /kaggle/working/cache --fps 24
+
+# 3) Train directly from all 3 merged datasets in one command
+!python {CODE_DIR}/train.py \
+    --data_roots cad=/kaggle/input/datasets/tanushkalokegaonkar/camouflaged-animal-dataset/CamouflagedAnimalDataset \
+                 yuv20k=/kaggle/input/datasets/tanushkalokegaonkar/yuv20k/YUV20K \
+                 moca=/kaggle/working/moca_converted \
+    --adapters cad=cad yuv20k=imgs_gt moca=moca_mask \
+    --cache_root /kaggle/working/cache \
+    --checkpoint_dir /kaggle/working/checkpoints \
+    --epochs 50 --batch_size 8
+
+===== CELL 12 [code] =====
+# 3) Train directly from all 3 merged datasets in one command
+!python {CODE_DIR}/train.py \
+    --data_roots cad=/kaggle/input/datasets/tanushkalokegaonkar/camouflaged-animal-dataset/CamouflagedAnimalDataset \
+                 yuv20k=/kaggle/input/datasets/tanushkalokegaonkar/yuv20k/YUV20K \
+                 moca=/kaggle/working/moca_converted \
+    --adapters cad=cad yuv20k=imgs_gt moca=moca_mask \
+    --cache_root /kaggle/working/cache \
+    --checkpoint_dir /kaggle/working/checkpoints \
+    --epochs 50 --batch_size 8
+
+===== CELL 13 [code] =====
