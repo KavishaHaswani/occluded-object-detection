@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import { getJob, JobResponse, API_BASE_URL } from '../api';
 import { BeforeAfterSlider } from '../components/BeforeAfterSlider';
+import { PipelineStageViewer } from '../components/PipelineStageViewer';
+import { PlaybackProvider } from '../hooks/usePlayback';
 
 interface StepDefinition {
   id: string;
@@ -419,65 +421,70 @@ export const Result: React.FC = () => {
             </div>
           )}
 
-          {/* Done State: Outputs Manifest & Before/After Slider */}
+          {/* Done State: Outputs Manifest, Before/After Slider & Stage Breakdown */}
           {job.status === 'done' && job.outputs && (
-            <div className="pt-2 space-y-8">
-              {/* Interactive Before/After Comparison Slider */}
-              <BeforeAfterSlider outputs={job.outputs} />
+            <PlaybackProvider>
+              <div className="pt-2 space-y-8">
+                {/* 1. Synchronized Interactive Before/After Comparison Slider */}
+                <BeforeAfterSlider outputs={job.outputs} />
 
-              <div className="space-y-4 pt-4 border-t border-slate-800/80">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-                    <CheckCircle2 size={18} />
-                    <span>Output Streams Generated Successfully</span>
-                  </div>
-                  <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded border border-emerald-800/40">
-                    Ready for Inspection
-                  </span>
-                </div>
+                {/* 2. Synchronized Pipeline Stage Viewer (Raw, Amp, Flow, Mask) with Overlay & SVG Architecture */}
+                <PipelineStageViewer outputs={job.outputs} />
 
-              {/* Stream Cards Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {Object.entries(job.outputs).map(([streamKey, streamPath]) => (
-                  <div
-                    key={streamKey}
-                    className="p-3.5 rounded-xl bg-dark-900/70 border border-slate-800 flex items-center justify-between group hover:border-cyan-500/40 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-cyan-950/60 text-cyan-400 flex items-center justify-center flex-shrink-0">
-                        <Video size={16} />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-semibold uppercase text-slate-200 tracking-wide">
-                          {streamKey.replace('_', ' ')}
-                        </div>
-                        <div className="text-[11px] font-mono text-slate-500 truncate max-w-[180px]">
-                          {streamPath}
-                        </div>
-                      </div>
+                <div className="space-y-4 pt-4 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+                      <CheckCircle2 size={18} />
+                      <span>Output Streams Generated Successfully</span>
                     </div>
-
-                    <a
-                      href={`${API_BASE_URL}${streamPath}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 hover:text-cyan-300 text-[11px] font-mono text-cyan-400 border border-slate-700/60 transition-colors flex items-center gap-1 flex-shrink-0"
-                    >
-                      <Play size={10} className="fill-current" />
-                      View
-                    </a>
+                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded border border-emerald-800/40">
+                      Ready for Inspection
+                    </span>
                   </div>
-                ))}
-              </div>
 
-              <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-800/30 text-xs text-cyan-300 flex items-start gap-2.5">
-                <FileCheck size={16} className="flex-shrink-0 mt-0.5" />
-                <span>
-                  All streams have equal frame count and framerate with HTTP 206 Partial Content range support.
-                </span>
+                  {/* Stream Cards Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {Object.entries(job.outputs).map(([streamKey, streamPath]) => (
+                      <div
+                        key={streamKey}
+                        className="p-3.5 rounded-xl bg-dark-900/70 border border-slate-800 flex items-center justify-between group hover:border-cyan-500/40 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-cyan-950/60 text-cyan-400 flex items-center justify-center flex-shrink-0">
+                            <Video size={16} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold uppercase text-slate-200 tracking-wide">
+                              {streamKey.replace('_', ' ')}
+                            </div>
+                            <div className="text-[11px] font-mono text-slate-500 truncate max-w-[180px]">
+                              {streamPath}
+                            </div>
+                          </div>
+                        </div>
+
+                        <a
+                          href={`${API_BASE_URL}${streamPath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 hover:text-cyan-300 text-[11px] font-mono text-cyan-400 border border-slate-700/60 transition-colors flex items-center gap-1 flex-shrink-0"
+                        >
+                          <Play size={10} className="fill-current" />
+                          View
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-800/30 text-xs text-cyan-300 flex items-start gap-2.5">
+                    <FileCheck size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>
+                      All streams have equal frame count and framerate with HTTP 206 Partial Content range support.
+                    </span>
+                  </div>
+                </div>
               </div>
-              </div>
-            </div>
+            </PlaybackProvider>
           )}
         </div>
       )}

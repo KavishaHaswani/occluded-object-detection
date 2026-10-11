@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
 } from 'lucide-react';
 import { API_BASE_URL } from '../api';
+import { usePlayback } from '../hooks/usePlayback';
 
 export interface BeforeAfterSliderProps {
   outputs?: {
@@ -31,6 +32,8 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
   amplifiedUrl,
   rawUrl,
 }) => {
+  const playback = usePlayback();
+
   // Helper to ensure full URL path
   const resolveUrl = (path?: string) => {
     if (!path) return '';
@@ -49,13 +52,6 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
   const [dividerPos, setDividerPos] = useState<number>(50);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
-  // Playback state
-  const [isPlaying, setIsPlaying] = useState<boolean>(true);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
-  const isScrubbingRef = useRef<boolean>(false);
-
   // Loading state (show until both can play)
   const [isMasterReady, setIsMasterReady] = useState<boolean>(false);
   const [isSlaveReady, setIsSlaveReady] = useState<boolean>(false);
@@ -71,141 +67,49 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
 
   const isBothReady = isMasterReady && isSlaveReady;
 
-  // Sync playback rates
+  // Register master video (bottom) with usePlayback
   useEffect(() => {
-    if (masterVideoRef.current) masterVideoRef.current.playbackRate = playbackSpeed;
-    if (slaveVideoRef.current) slaveVideoRef.current.playbackRate = playbackSpeed;
-  }, [playbackSpeed]);
-
-  // Master/slave synchronization with drift correction (> 0.05s)
-  const syncSlaveToMaster = useCallback(() => {
-    const master = masterVideoRef.current;
-    const slave = slaveVideoRef.current;
-    if (!master || !slave || isScrubbingRef.current) return;
-
-    // Correct drift if greater than 0.05 seconds
-    const diff = master.currentTime - slave.currentTime;
-    if (Math.abs(diff) > 0.05) {
-      slave.currentTime = master.currentTime;
+    const el = masterVideoRef.current;
+    if (el) {
+      playback.registerVideo('slider-master', el);
+      el.currentTime = playback.currentTime;
+      el.playbackRate = playback.playbackSpeed;
+      if (playback.isPlaying) el.play().catch(() => {});
     }
-  }, []);
-
-  // Frame synchronization loop using requestVideoFrameCallback when available
-  useEffect(() => {
-    let handle: number | null = null;
-    let isCancelled = false;
-
-    const syncLoop = () => {
-      if (isCancelled) return;
-      syncSlaveToMaster();
-
-      const master = masterVideoRef.current;
-      if (master && 'requestVideoFrameCallback' in master) {
-        handle = (master as any).requestVideoFrameCallback(syncLoop);
-      } else {
-        handle = requestAnimationFrame(syncLoop);
-      }
-    };
-
-    const master = masterVideoRef.current;
-    if (master && 'requestVideoFrameCallback' in master) {
-      handle = (master as any).requestVideoFrameCallback(syncLoop);
-    } else {
-      handle = requestAnimationFrame(syncLoop);
-    }
-
     return () => {
-      isCancelled = true;
-      if (handle !== null) {
-        const master = masterVideoRef.current;
-        if (master && 'cancelVideoFrameCallback' in master) {
-          (master as any).cancelVideoFrameCallback(handle);
-        } else {
-          cancelAnimationFrame(handle);
-        }
-      }
+      playback.unregisterVideo('slider-master');
     };
-  }, [syncSlaveToMaster]);
+  }, [bottomSource, playback]);
 
-  // When both videos are ready, start autoplay if isPlaying
+  // Register slave video (top) with usePlayback
   useEffect(() => {
-    if (isBothReady && isPlaying) {
-      const master = masterVideoRef.current;
-      const slave = slaveVideoRef.current;
-      if (master && slave) {
-        master.play().catch(() => {});
-        slave.play().catch(() => {});
-      }
+    const el = slaveVideoRef.current;
+    if (el) {
+      playback.registerVideo('slider-slave', el);
+      el.currentTime = playback.currentTime;
+      el.playbackRate = playback.playbackSpeed;
+      if (playback.isPlaying) el.play().catch(() => {});
     }
-  }, [isBothReady, isPlaying]);
-
-  // Handle master time update for scrubber display
-  const handleMasterTimeUpdate = () => {
-    if (masterVideoRef.current && !isScrubbingRef.current) {
-      setCurrentTime(masterVideoRef.current.currentTime);
-    }
-  };
-
-  // Shared Play/Pause toggle
-  const togglePlay = () => {
-    const master = masterVideoRef.current;
-    const slave = slaveVideoRef.current;
-    if (!master || !slave) return;
-
-    if (isPlaying) {
-      master.pause();
-      slave.pause();
-      setIsPlaying(false);
-    } else {
-      slave.currentTime = master.currentTime;
-      master.play().catch(() => {});
-      slave.play().catch(() => {});
-      setIsPlaying(true);
-    }
-  };
-
-  // Shared Restart / Loop
-  const handleRestart = () => {
-    const master = masterVideoRef.current;
-    const slave = slaveVideoRef.current;
-    if (!master || !slave) return;
-
-    master.currentTime = 0;
-    slave.currentTime = 0;
-    setCurrentTime(0);
-    master.play().catch(() => {});
-    slave.play().catch(() => {});
-    setIsPlaying(true);
-  };
-
-  // Seamless looping when master video ends
-  const handleMasterEnded = () => {
-    handleRestart();
-  };
+    return () => {
+      playback.unregisterVideo('slider-slave');
+    };
+  }, [topSource, playback]);
 
   // Shared Scrubber Seek
   const handleScrubberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = parseFloat(e.target.value);
-    setCurrentTime(newTime);
-    if (masterVideoRef.current) masterVideoRef.current.currentTime = newTime;
-    if (slaveVideoRef.current) slaveVideoRef.current.currentTime = newTime;
+    playback.seek(newTime);
   };
 
   const handleScrubberStart = () => {
-    isScrubbingRef.current = true;
+    playback.isScrubbingRef.current = true;
   };
 
   const handleScrubberEnd = () => {
-    isScrubbingRef.current = false;
-    if (isPlaying) {
-      masterVideoRef.current?.play().catch(() => {});
-      slaveVideoRef.current?.play().catch(() => {});
+    playback.isScrubbingRef.current = false;
+    if (playback.isPlaying) {
+      playback.play();
     }
-  };
-
-  // Playback speed selection (0.25x, 0.5x, 1x)
-  const handleSpeedSelect = (speed: number) => {
-    setPlaybackSpeed(speed);
   };
 
   // Toggle fullscreen
@@ -302,13 +206,6 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 10);
-    return `${m}:${s < 10 ? '0' : ''}${s}.${ms}`;
-  };
-
   return (
     <div className="space-y-4">
       {/* Top Bar: Title & Toggle View Switch */}
@@ -381,12 +278,7 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
           loop
           playsInline
           preload="auto"
-          onLoadedMetadata={(e) => {
-            setDuration(e.currentTarget.duration);
-          }}
           onCanPlay={() => setIsMasterReady(true)}
-          onTimeUpdate={handleMasterTimeUpdate}
-          onEnded={handleMasterEnded}
           className="absolute inset-0 w-full h-full object-contain pointer-events-none"
         />
 
@@ -454,16 +346,16 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
         {/* Scrubber Slider */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs font-mono text-slate-400">
-            <span>{formatTime(currentTime)}</span>
-            <span className="text-slate-500">{formatTime(duration)}</span>
+            <span>{playback.formatTime(playback.currentTime)}</span>
+            <span className="text-slate-500">{playback.formatTime(playback.duration)}</span>
           </div>
 
           <input
             type="range"
             min={0}
-            max={duration || 1}
+            max={playback.duration || 1}
             step={0.01}
-            value={currentTime}
+            value={playback.currentTime}
             onChange={handleScrubberChange}
             onMouseDown={handleScrubberStart}
             onMouseUp={handleScrubberEnd}
@@ -481,12 +373,12 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={togglePlay}
+              onClick={playback.togglePlay}
               disabled={!isBothReady}
-              aria-label={isPlaying ? 'Pause video' : 'Play video'}
+              aria-label={playback.isPlaying ? 'Pause video' : 'Play video'}
               className="w-9 h-9 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 flex items-center justify-center shadow-md shadow-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
             >
-              {isPlaying ? (
+              {playback.isPlaying ? (
                 <Pause size={16} className="fill-current" />
               ) : (
                 <Play size={16} className="fill-current ml-0.5" />
@@ -495,7 +387,7 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
 
             <button
               type="button"
-              onClick={handleRestart}
+              onClick={playback.restart}
               disabled={!isBothReady}
               aria-label="Restart video"
               className="w-9 h-9 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
@@ -504,7 +396,7 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
             </button>
 
             <div className="text-xs font-mono text-slate-400 pl-2 hidden sm:block">
-              {isPlaying ? 'Playing in lockstep' : 'Paused'}
+              {playback.isPlaying ? 'Playing in lockstep' : 'Paused'}
             </div>
           </div>
 
@@ -516,9 +408,9 @@ export const BeforeAfterSlider: React.FC<BeforeAfterSliderProps> = ({
                 <button
                   key={speed}
                   type="button"
-                  onClick={() => handleSpeedSelect(speed)}
+                  onClick={() => playback.setPlaybackSpeed(speed)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-semibold transition-all cursor-pointer ${
-                    playbackSpeed === speed
+                    playback.playbackSpeed === speed
                       ? 'bg-cyan-500 text-slate-950 shadow-sm'
                       : 'text-slate-400 hover:text-white'
                   }`}
