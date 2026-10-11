@@ -5,7 +5,23 @@ features with a **motion signal computed on Eulerian-amplified frames**, so
 objects that are visually indistinguishable from the background (color/texture
 matches perfectly) can still be detected via the subtle motion they can't hide.
 
-## Pipeline overview
+---
+
+## 📷 Screenshots
+
+<!-- Screenshot Placeholders: drop images into docs/screenshots/ to view -->
+
+| Home View & Upload Flow | Before/After Split Slider |
+|:---:|:---:|
+| ![Home Page & Upload](docs/screenshots/home_page.png)<br><sub>*Drag-and-drop video upload, motion amplification parameter tuning, and sample gallery.*</sub> | ![Before/After Comparison Slider](docs/screenshots/slider_view.png)<br><sub>*Interactive draggable split slider comparing Appearance-only baseline vs Motion-amplified detection.*</sub> |
+
+| Pipeline Stage Viewer | Architecture & Evaluation Metrics |
+|:---:|:---:|
+| ![Pipeline Stage Viewer](docs/screenshots/stage_viewer.png)<br><sub>*Synchronized multi-stream stage inspection: Raw Video, Amplified Frames, Flow Heatmap, and Detection Mask.*</sub> | ![Architecture and Metrics](docs/screenshots/architecture_metrics.png)<br><sub>*Two-stream gated fusion diagram and quantitative evaluation metrics table.*</sub> |
+
+---
+
+## 🏗 Pipeline Architecture
 
 ```
 raw video frames
@@ -32,120 +48,167 @@ raw video frames
               segmentation mask
 ```
 
-## Files
+---
 
-| File | Purpose |
-|---|---|
-| `motion_amplification.py` | Linear Eulerian Video Magnification (Laplacian pyramid + temporal Butterworth bandpass filter + amplification), run in overlapping sliding windows across a full video. |
-| `optical_flow.py` | Computes dense optical flow (Farneback by default; optional RAFT wrapper) **between consecutive amplified frames**, reduced to a single-channel motion-magnitude map. |
-| `model.py` | `TwoStreamCOD`: appearance encoder + motion encoder + gated fusion + U-Net decoder. |
-| `losses.py` | Weighted BCE + IoU loss (standard COD loss combination). |
-| `metrics.py` | MAE, IoU, Dice, S-measure, weighted F-measure — matches metrics reported by SLT-Net / EMIP / SAM-PM so results are directly comparable. |
-| `dataset.py` | PyTorch `Dataset` for MoCA-Mask-style layout, reading cached amplified frames + motion maps. |
-| `preprocess_amplify.py` | Run once per dataset: amplifies every sequence and caches amplified frames + flow-derived motion maps to disk. |
-| `train.py` | Training loop. |
-| `eval.py` | Runs a trained checkpoint over a test set, reports aggregate metrics. |
-| `infer_demo.py` | End-to-end demo: takes a raw video, produces a side-by-side output video (appearance-only baseline vs. motion-amplified pipeline). |
-| `test_pipeline.py` | Synthetic smoke test — no real dataset needed, verifies every stage runs and that amplification measurably boosts the motion signal. |
+## ⚡ Prerequisites & System Requirements
 
-## Setup
+Before running the application or training pipeline, ensure you have the following installed:
 
+1. **Python 3.10+**: Core backend and deep learning pipeline.
+2. **Node.js 18+ & npm**: Frontend web application.
+3. **FFmpeg (Required)**: Essential for video preprocessing, MP4 (H.264 / AAC) encoding, cross-browser streaming, and frame extraction.
+
+### Installing FFmpeg
+
+- **macOS** (via Homebrew):
+  ```bash
+  brew install ffmpeg
+  ```
+- **Ubuntu / Debian**:
+  ```bash
+  sudo apt update && sudo apt install -y ffmpeg
+  ```
+- **Windows** (via winget or Chocolatey):
+  ```powershell
+  winget install Gyan.FFmpeg
+  # or
+  choco install ffmpeg
+  ```
+
+Verify your installation:
 ```bash
-pip install torch torchvision opencv-python-headless numpy scipy
+ffmpeg -version
 ```
 
-## Quick sanity check (no dataset required)
+---
+
+## 🚀 Quickstart: Single-Command Run
+
+You can set up dependencies and launch both servers simultaneously using a single command:
+
+### 1. Install All Dependencies
 
 ```bash
+make install
+```
+*(Alternative: `npm run install:all`)*
+
+This creates a local Python virtual environment (`.venv`), installs `backend/requirements.txt` (PyTorch, OpenCV, FastAPI, Uvicorn, etc.), and runs `npm install` inside `frontend/`.
+
+### 2. Start Both Servers Concurrently
+
+```bash
+make dev
+```
+*(Alternative: `make run` or `npm run dev`)*
+
+This starts:
+- **FastAPI Backend**: `http://localhost:8000` (Interactive API docs at `http://localhost:8000/docs`)
+- **React Frontend**: `http://localhost:5173`
+
+Both servers stream logs to your terminal and shut down cleanly on `Ctrl+C`.
+
+---
+
+## 🎬 Generating Precomputed Video Samples
+
+The repository includes a batch generation script (`scripts/make_samples.py`) that executes `run_pipeline()` on raw source clips and stores the results in the web app's sample gallery format.
+
+1. Drop any video files (`.mp4`, `.mov`, `.avi`, `.webm`) into `samples_input/`.
+2. Run the generator:
+   ```bash
+   make samples
+   # or
+   python scripts/make_samples.py --input_dir samples_input --output_dir samples
+   ```
+
+For each video, this generates:
+```
+samples/<sample_name>/
+  ├── raw.mp4                # Source video standardized for browser playback
+  ├── baseline.mp4           # Model detection without motion signal (appearance only)
+  ├── amplified.mp4          # Final motion-amplified detection mask overlay
+  ├── amplified_frames.mp4   # Eulerian motion-magnified frames
+  ├── flow.mp4               # Farneback optical flow motion-magnitude heatmap
+  ├── thumbnail.jpg          # First-frame thumbnail preview
+  └── meta.json              # Title, description, and parameter metadata
+```
+
+Precomputed samples appear automatically in the "Try a sample" gallery on the Home page and open instantly without reprocessing.
+
+---
+
+## 📁 Repository Structure
+
+| Path | Purpose |
+|---|---|
+| `Makefile` | Unified CLI targets for development, installation, sample building, and testing. |
+| `package.json` | Root npm configuration forwarding development scripts to the Makefile. |
+| `motion_amplification.py` | Linear Eulerian Video Magnification (Laplacian pyramid + temporal Butterworth bandpass filter + amplification) across overlapping sliding windows. |
+| `optical_flow.py` | Computes dense optical flow (Farneback or RAFT) between consecutive amplified frames, normalized to a single-channel motion map. |
+| `model.py` | `TwoStreamCOD`: Appearance encoder + motion encoder + per-scale gated fusion + U-Net decoder. |
+| `infer_demo.py` | End-to-end inference engine with video rendering and progress callback integration. |
+| `scripts/make_samples.py` | Batch processing script generating sample gallery videos, thumbnails, and `meta.json`. |
+| `backend/` | FastAPI service (`app.main:app`) handling video uploads, asynchronous inference, CORS, and HTTP 206 Partial Content video streaming. |
+| `frontend/` | React 18 + Vite + TypeScript application with Tailwind CSS, split before/after comparison slider, and synchronized pipeline stage viewer. |
+| `losses.py` | Weighted BCE + IoU loss (standard COD loss combination). |
+| `metrics.py` | Quantitative metrics (MAE, IoU, Dice, S-measure, weighted F-measure). |
+| `dataset.py` | PyTorch `Dataset` for MoCA-Mask layout reading cached amplified frames and motion maps. |
+| `preprocess_amplify.py` | Offline dataset preprocessing script to cache amplified frames and flow maps. |
+| `train.py` | Model training script. |
+| `eval.py` | Model evaluation script reporting aggregate metrics. |
+| `test_pipeline.py` | Synthetic smoke test verifying amplification and feature extraction stages. |
+
+---
+
+## 🧪 Synthetic Sanity Check
+
+Run a synthetic smoke test without needing a real dataset:
+
+```bash
+make test
+# or
 python test_pipeline.py
 ```
-This generates a synthetic video with a near-invisible drifting blob, runs
-amplification + optical flow + the model, and prints an "amplification factor"
-showing the measured motion signal is boosted (verified during development to
-give ~1.8x higher raw flow magnitude in the moving region vs. unamplified).
 
-## Running on real data (MoCA-Mask)
+This generates a synthetic clip containing a near-invisible drifting camouflage blob, executes Eulerian magnification, computes optical flow, and verifies that the motion signal is measurably boosted (~1.8x boost over raw flow).
 
-Expected input layout per sequence:
+---
+
+## 📊 Dataset Training & Evaluation (MoCA-Mask)
+
+Expected sequence directory structure:
 ```
 <data_root>/<seq>/Frame/00000.jpg, 00001.jpg, ...
-<data_root>/<seq>/GT/00000.png, 00005.png, ...   (ground-truth masks, every 5th frame)
+<data_root>/<seq>/GT/00000.png, 00005.png, ...   (ground-truth masks)
 ```
 
-1. **Preprocess** (amplify + compute flow, once):
+1. **Preprocess Dataset** (amplify + compute flow once):
    ```bash
-   python preprocess_amplify.py --data_root /path/to/MoCA-Mask/train \
-                                 --cache_root ./cache/train --fps 24
-   python preprocess_amplify.py --data_root /path/to/MoCA-Mask/test \
-                                 --cache_root ./cache/test --fps 24
+   python preprocess_amplify.py --data_root /path/to/MoCA-Mask/train --cache_root ./cache/train --fps 24
+   python preprocess_amplify.py --data_root /path/to/MoCA-Mask/test --cache_root ./cache/test --fps 24
    ```
 
 2. **Train**:
    ```bash
-   python train.py --data_root /path/to/MoCA-Mask/train --cache_root ./cache/train \
-                    --epochs 50 --batch_size 8
+   python train.py --data_root /path/to/MoCA-Mask/train --cache_root ./cache/train --epochs 50 --batch_size 8
    ```
 
-3. **Evaluate** (report MAE / IoU / Dice / S-measure / weighted F-measure):
+3. **Evaluate**:
    ```bash
-   python eval.py --data_root /path/to/MoCA-Mask/test --cache_root ./cache/test \
-                   --checkpoint ./checkpoints/best_model.pth
+   python eval.py --data_root /path/to/MoCA-Mask/test --cache_root ./cache/test --checkpoint ./best_model.zip
    ```
-   Run the same command against a CAD-formatted test split for cross-domain results.
 
-4. **Demo video** (the hackathon deliverable — side-by-side comparison):
+4. **Standalone Demo Video Generation**:
    ```bash
-   python infer_demo.py --video your_clip.mp4 --checkpoint ./checkpoints/best_model.pth \
-                         --output demo_output.mp4
+   python infer_demo.py --video your_clip.mp4 --checkpoint ./best_model.zip --output demo_output.mp4
    ```
 
-## Known simplifications
+---
 
-- `motion_amplification.py` implements the **linear** (Laplacian-pyramid)
-  variant of Eulerian Video Magnification (Wu et al., 2012), not the more
-  robust **phase-based** variant yet (Wadhwa et al., 2013), which requires a
-  complex steerable pyramid. The linear variant is simpler and fully
-  self-contained; It will be swapped out later if more fidelity is needed — the rest of the pipeline's interface (list of frames in, list of amplified frames out)
-  does not need to change.
-- `model.py`'s encoders are small custom CNNs, not pretrained ImageNet
-  backbones for the first prototype. Still need to replace `AppearanceEncoder` with a pretrained `torchvision.models.resnet18` or a
-  PVTv2 backbone for a meaningful accuracy boost — the fusion and decoder
-  logic do not need to change.
-- `optical_flow.py` defaults to Farneback (classical, CPU-friendly). The RAFT
-  wrapper is provided but requires downloading pretrained weights; it will be more accurate on hard/camouflaged
-  cases (this is what SLT-Net and EMIP use as their flow source).
+## 🔬 Technical Notes & Design Decisions
 
-## Running the Web App
-
-The repository includes a web interface with a synchronized multi-stream player and split comparison slider:
-
-- `backend/`: FastAPI backend service wrapping the inference pipeline.
-- `frontend/`: React + Vite + TypeScript web application with dark-mode glassmorphic controls.
-- `samples/`: Storage for demo clips and precomputed outputs.
-
-### 1. Start the Backend
-
-```bash
-# Create and activate virtual environment (already set up in project root)
-source .venv/bin/activate
-
-# Install backend dependencies (if setting up fresh)
-pip install -r backend/requirements.txt
-
-# Start the FastAPI server (runs on http://localhost:8000)
-cd backend
-uvicorn app.main:app --reload --port 8000
-```
-
-### 2. Start the Frontend
-
-In a separate terminal:
-
-```bash
-# Install frontend dependencies and start Vite dev server
-cd frontend
-npm install
-npm run dev
-```
-
-Open `http://localhost:5173` in your browser. You can select pre-loaded sample clips or upload custom video clips, tune magnification parameters (&alpha;, frequency cutoff, window size), and view real-time synchronized detections.
+- **Linear vs. Phase-Based Magnification**: The current implementation utilizes the linear (Laplacian-pyramid) formulation of Eulerian Video Magnification (Wu et al., 2012) due to its mathematical clarity and zero external dependencies. Phase-based magnification (Wadhwa et al., 2013) can be plugged in without changing the downstream interface.
+- **Farneback vs. Deep Flow**: Classical Farneback optical flow is employed by default for real-time CPU friendliness and fast local execution. A RAFT wrapper is provided in `optical_flow.py` for high-precision inference when pretrained weights are loaded.
+- **Baseline Definition**: The "Appearance-only" baseline passes identical video frames through the exact same two-stream network with the motion stream zeroed out, isolating the exact performance delta contributed by Eulerian motion magnification.
+- **HTTP Range Requests (RFC 7233)**: Backend static endpoints support HTTP 206 Partial Content requests, allowing the browser's video engine to seek, buffer, and synchronize multi-stream playback seamlessly.

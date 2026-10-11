@@ -1,0 +1,10 @@
+{
+  "id": "chameleon",
+  "title": "Chameleon",
+  "description": "Precomputed motion-amplified camouflage breaking sequence for Chameleon.",
+  "source_file": "chameleon.mp4",
+  "alpha": 15.0,
+  "low_hz": 0.2,
+  "high_hz": 3.0,
+  "created_at": "2026-10-11T17:42:51Z"
+}

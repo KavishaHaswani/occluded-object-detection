@@ -1,0 +1,13 @@
+{
+  "name": "motion-amplified-camouflage-breaking",
+  "version": "1.0.0",
+  "description": "Video Camouflaged Object Detection using Eulerian Motion Magnification and Gated Two-Stream Fusion",
+  "private": true,
+  "scripts": {
+    "dev": "make dev",
+    "start": "make dev",
+    "install:all": "make install",
+    "samples": "make samples",
+    "build": "make build"
+  }
+}

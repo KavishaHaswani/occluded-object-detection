@@ -123,10 +123,12 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     const syncLoop = () => {
       if (!isRunning) return;
 
+      const master =
+        videoElementsRef.current.get('slider-master') ||
+        Array.from(videoElementsRef.current.values())[0];
       const videos = Array.from(videoElementsRef.current.values());
-      if (videos.length > 0 && !isScrubbingRef.current) {
-        const master = videos[0];
 
+      if (master && !isScrubbingRef.current) {
         if (master.duration && !isNaN(master.duration) && master.duration > 0) {
           setDuration((prev) => (prev > 0 ? prev : master.duration));
         }
@@ -141,8 +143,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
 
         // Correct drift (> 0.05s) on all other videos
-        for (let i = 1; i < videos.length; i++) {
-          const slave = videos[i];
+        for (const slave of videos) {
+          if (slave === master) continue;
           const diff = Math.abs(masterTime - slave.currentTime);
           if (diff > 0.05) {
             slave.currentTime = masterTime;
@@ -158,9 +160,8 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }
       }
 
-      const firstVideo = videos[0];
-      if (firstVideo && 'requestVideoFrameCallback' in firstVideo) {
-        handle = (firstVideo as any).requestVideoFrameCallback(syncLoop);
+      if (master && 'requestVideoFrameCallback' in master) {
+        handle = (master as any).requestVideoFrameCallback(syncLoop);
       } else {
         handle = requestAnimationFrame(syncLoop);
       }

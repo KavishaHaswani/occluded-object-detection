@@ -305,9 +305,23 @@ async def list_samples():
                         if ok:
                             cv2.imwrite(str(thumb_file), frame)
 
+                    meta_file = item / "meta.json"
+                    title = item.name.replace("_", " ").title()
+                    description = f"Precomputed motion-amplified camouflage breaking sequence for {title}."
+                    if meta_file.exists():
+                        try:
+                            import json
+                            with open(meta_file, "r", encoding="utf-8") as mf:
+                                mdata = json.load(mf)
+                                title = mdata.get("title", title)
+                                description = mdata.get("description", description)
+                        except Exception:
+                            pass
+
                     samples_list.append({
                         "id": item.name,
-                        "title": item.name.replace("_", " ").title(),
+                        "title": title,
+                        "description": description,
                         "thumbnail": f"/samples/{item.name}/thumbnail.jpg" if thumb_file.exists() else None,
                         "outputs": {
                             "raw": f"/samples/{item.name}/raw.mp4",
