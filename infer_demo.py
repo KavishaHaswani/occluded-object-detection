@@ -153,11 +153,18 @@ def run_pipeline(
     # 2. Amplifying stage
     if progress_cb:
         progress_cb("amplifying", 0.0)
+
+    effective_window_size = window_size
+    effective_overlap = overlap
+    if len(frames) < effective_window_size:
+        effective_window_size = max(len(frames), 24)
+        effective_overlap = min(overlap, effective_window_size // 2)
+
     amplified = amplify_video_in_windows(
         frames,
         fps=fps,
-        window_size=window_size,
-        overlap=overlap,
+        window_size=effective_window_size,
+        overlap=effective_overlap,
         low_hz=low_hz,
         high_hz=high_hz,
         alpha=alpha,
