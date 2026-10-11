@@ -256,6 +256,22 @@ async def get_job(job_id: str):
     """
     job = jobs.get(job_id)
     if not job:
+        # Check if job_id matches a precomputed sample folder
+        sample_dir = SAMPLES_DIR / job_id
+        if sample_dir.is_dir() and (sample_dir / "raw.mp4").exists():
+            return {
+                "status": "done",
+                "stage": "done",
+                "percent": 100.0,
+                "error": None,
+                "outputs": {
+                    "raw": f"/samples/{job_id}/raw.mp4",
+                    "baseline": f"/samples/{job_id}/baseline.mp4",
+                    "amplified": f"/samples/{job_id}/amplified.mp4",
+                    "amplified_frames": f"/samples/{job_id}/amplified_frames.mp4",
+                    "flow": f"/samples/{job_id}/flow.mp4",
+                },
+            }
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
 
     return {

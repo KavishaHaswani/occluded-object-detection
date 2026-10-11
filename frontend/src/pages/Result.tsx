@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
   Loader2,
@@ -8,53 +8,143 @@ import {
   Clock,
   Video,
   FileCheck,
+  RotateCcw,
+  AlertTriangle,
+  Play,
 } from 'lucide-react';
 import { getJob, JobResponse, API_BASE_URL } from '../api';
+
+interface StepDefinition {
+  id: string;
+  number: number;
+  label: string;
+  description: string;
+}
+
+const PIPELINE_STEPS: StepDefinition[] = [
+  {
+    id: 'reading',
+    number: 1,
+    label: 'Reading',
+    description: 'Frame extraction & temporal windowing',
+  },
+  {
+    id: 'amplifying',
+    number: 2,
+    label: 'Amplifying',
+    description: 'Laplacian pyramid & Butterworth bandpass filter',
+  },
+  {
+    id: 'inference',
+    number: 3,
+    label: 'Inference',
+    description: 'Two-stream gated fusion neural network',
+  },
+];
 
 const STAGE_LABELS: Record<string, string> = {
   queued: 'Waiting in processing queue...',
   reading: 'Reading and validating video frames...',
-  amplifying: 'Eulerian motion amplification & temporal filtering...',
-  inference: 'Two-stream gated fusion neural network inference...',
+  amplifying: 'Eulerian motion amplification & temporal bandpass filtering...',
+  inference: 'Running two-stream gated fusion neural network...',
   done: 'Processing finished successfully',
 };
 
 export const Result: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
 
   const [job, setJob] = useState<JobResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState<boolean>(false);
 
   const pollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchStatus = useCallback(async () => {
+    if (!id) return;
+    try {
+      setFetchError(null);
+      const data = await getJob(id);
+      setJob(data);
+
+      if (data.status === 'done' || data.status === 'error') {
+        if (pollingTimerRef.current) {
+          clearInterval(pollingTimerRef.current);
+          pollingTimerRef.current = null;
+        }
+      }
+    } catch (err: any) {
+      setFetchError(err.message || 'Unable to connect to backend service.');
+    }
+  }, [id]);
 
   useEffect(() => {
     if (!id) return;
 
-    const fetchStatus = async () => {
-      try {
-        const data = await getJob(id);
-        setJob(data);
-
-        if (data.status === 'done' || data.status === 'error') {
-          if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to fetch job status');
-        if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
-      }
-    };
-
     fetchStatus();
-    pollingTimerRef.current = setInterval(fetchStatus, 800);
+    // Poll every 1 second
+    pollingTimerRef.current = setInterval(fetchStatus, 1000);
 
     return () => {
-      if (pollingTimerRef.current) clearInterval(pollingTimerRef.current);
+      if (pollingTimerRef.current) {
+        clearInterval(pollingTimerRef.current);
+        pollingTimerRef.current = null;
+      }
     };
-  }, [id]);
+  }, [id, fetchStatus]);
+
+  const handleRetryConnection = async () => {
+    setIsRetrying(true);
+    await fetchStatus();
+    setIsRetrying(false);
+    if (!pollingTimerRef.current && (!job || (job.status !== 'done' && job.status !== 'error'))) {
+      pollingTimerRef.current = setInterval(fetchStatus, 1000);
+    }
+  };
+
+  // Determine each step's status
+  const getStepStatus = (stepId: string) => {
+    if (!job) return 'pending';
+
+    if (job.status === 'done') {
+      return 'completed';
+    }
+
+    if (job.status === 'error') {
+      if (job.stage === stepId) return 'error';
+      // If error happened in a later step, previous steps completed
+      if (stepId === 'reading' && (job.stage === 'amplifying' || job.stage === 'inference')) {
+        return 'completed';
+      }
+      if (stepId === 'amplifying' && job.stage === 'inference') {
+        return 'completed';
+      }
+      return 'pending';
+    }
+
+    if (job.status === 'queued') {
+      return 'pending';
+    }
+
+    // job.status === 'running'
+    if (job.stage === stepId) {
+      return 'active';
+    }
+
+    if (stepId === 'reading') {
+      return job.stage === 'amplifying' || job.stage === 'inference' ? 'completed' : 'pending';
+    }
+
+    if (stepId === 'amplifying') {
+      return job.stage === 'inference' ? 'completed' : 'pending';
+    }
+
+    return 'pending';
+  };
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto">
-      {/* Back button & Title */}
+      {/* Top Navigation */}
       <div className="flex items-center justify-between">
         <Link
           to="/"
@@ -63,97 +153,300 @@ export const Result: React.FC = () => {
           <ArrowLeft size={16} />
           Back to Upload & Gallery
         </Link>
-        <span className="text-xs font-mono text-slate-500">
-          Job ID: <span className="text-cyan-400">{id}</span>
+        <span className="text-xs font-mono text-slate-400 bg-slate-900/80 px-3 py-1 rounded-full border border-slate-800">
+          Job ID: <span className="text-cyan-400 font-semibold">{id}</span>
         </span>
       </div>
 
-      {error ? (
+      {/* Fetch / Network Error State */}
+      {fetchError && !job && (
         <div className="glass-card rounded-2xl p-8 border-rose-500/30 bg-rose-950/20 text-center space-y-4">
-          <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center">
-            <XCircle size={28} />
+          <div className="w-14 h-14 mx-auto rounded-full bg-rose-500/10 text-rose-400 flex items-center justify-center">
+            <XCircle size={32} />
           </div>
-          <h2 className="text-lg font-semibold text-rose-300">Job Error</h2>
-          <p className="text-sm text-slate-300">{error}</p>
-          <Link
-            to="/"
-            className="inline-block mt-4 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-white transition-colors"
-          >
-            Upload Another Video
-          </Link>
+          <h2 className="text-lg font-semibold text-rose-300">Connection Error</h2>
+          <p className="text-sm text-slate-300 max-w-md mx-auto">{fetchError}</p>
+          <div className="flex items-center justify-center gap-3 pt-2">
+            <button
+              onClick={handleRetryConnection}
+              disabled={isRetrying}
+              className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-xs font-semibold text-white transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <RotateCcw size={14} className={isRetrying ? 'animate-spin' : ''} />
+              {isRetrying ? 'Retrying...' : 'Retry Connection'}
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-300 transition-colors cursor-pointer"
+            >
+              Upload Another Video
+            </button>
+          </div>
         </div>
-      ) : !job ? (
+      )}
+
+      {/* Initial Loading / Connecting State */}
+      {!job && !fetchError && (
         <div className="glass-card rounded-2xl p-16 text-center text-slate-400 space-y-3">
-          <Loader2 size={32} className="animate-spin mx-auto text-cyan-400" />
-          <p className="text-sm">Connecting to job runner...</p>
+          <Loader2 size={36} className="animate-spin mx-auto text-cyan-400" />
+          <p className="text-sm font-medium text-slate-300">Connecting to job runner...</p>
+          <p className="text-xs text-slate-500">Checking job status and queue state</p>
         </div>
-      ) : (
-        <div className="glass-card rounded-2xl p-6 sm:p-8 space-y-6">
-          {/* Header Status Row */}
+      )}
+
+      {/* Main Job Card */}
+      {job && (
+        <div className="glass-card rounded-2xl p-6 sm:p-8 space-y-8">
+          {/* Status Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800/80">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5">
                 {job.status === 'queued' && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" />
+                  <span className="flex h-3 w-3 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500" />
+                  </span>
                 )}
                 {job.status === 'running' && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse" />
+                  <span className="flex h-3 w-3 relative">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500" />
+                  </span>
                 )}
                 {job.status === 'done' && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                  <span className="inline-flex rounded-full h-3 w-3 bg-emerald-500 shadow-sm shadow-emerald-500/50" />
                 )}
                 {job.status === 'error' && (
-                  <span className="w-2.5 h-2.5 rounded-full bg-rose-400" />
+                  <span className="inline-flex rounded-full h-3 w-3 bg-rose-500 shadow-sm shadow-rose-500/50" />
                 )}
-                <h2 className="text-lg font-semibold text-white uppercase tracking-wider text-xs">
-                  Status: <span className="text-cyan-400 font-mono">{job.status}</span>
+
+                <h2 className="text-base font-semibold text-white tracking-wide uppercase">
+                  Status:{' '}
+                  <span
+                    className={`font-mono ${
+                      job.status === 'done'
+                        ? 'text-emerald-400'
+                        : job.status === 'error'
+                        ? 'text-rose-400'
+                        : job.status === 'queued'
+                        ? 'text-amber-400'
+                        : 'text-cyan-400'
+                    }`}
+                  >
+                    {job.status}
+                  </span>
                 </h2>
               </div>
-              <p className="text-xs text-slate-400 mt-1">
+              <p className="text-xs text-slate-400 mt-1.5">
                 {STAGE_LABELS[job.stage] || job.stage}
               </p>
             </div>
 
             <div className="text-right">
-              <span className="text-2xl font-bold font-mono text-cyan-400">
+              <span className="text-3xl font-bold font-mono text-cyan-400 tracking-tight">
                 {job.percent.toFixed(1)}%
               </span>
             </div>
           </div>
 
+          {/* Stepper for "Reading, Amplifying, Inference" */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
+              <span>Pipeline Stage Stepper</span>
+              <span className="font-mono text-cyan-400">
+                {job.status === 'done'
+                  ? 'All stages completed'
+                  : `Current: ${job.stage || 'queued'}`}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 relative">
+              {PIPELINE_STEPS.map((step) => {
+                const status = getStepStatus(step.id);
+                return (
+                  <div
+                    key={step.id}
+                    className={`rounded-xl p-4 border transition-all duration-300 relative flex flex-col justify-between ${
+                      status === 'completed'
+                        ? 'bg-emerald-950/20 border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                        : status === 'active'
+                        ? 'bg-cyan-950/30 border-cyan-400 ring-2 ring-cyan-500/20 shadow-lg shadow-cyan-500/10'
+                        : status === 'error'
+                        ? 'bg-rose-950/30 border-rose-500/60 shadow-sm shadow-rose-500/10'
+                        : 'bg-dark-900/60 border-slate-800 text-slate-500'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3 mb-2">
+                      {/* Step Circle Indicator */}
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs font-bold transition-all ${
+                          status === 'completed'
+                            ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30'
+                            : status === 'active'
+                            ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/40 animate-pulse'
+                            : status === 'error'
+                            ? 'bg-rose-500 text-white shadow-md shadow-rose-500/30'
+                            : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
+                      >
+                        {status === 'completed' ? (
+                          <CheckCircle2 size={16} />
+                        ) : status === 'active' ? (
+                          <Loader2 size={16} className="animate-spin" />
+                        ) : status === 'error' ? (
+                          <XCircle size={16} />
+                        ) : (
+                          step.number
+                        )}
+                      </div>
+
+                      <div>
+                        <h4
+                          className={`text-sm font-semibold ${
+                            status === 'completed'
+                              ? 'text-emerald-300'
+                              : status === 'active'
+                              ? 'text-cyan-300'
+                              : status === 'error'
+                              ? 'text-rose-300'
+                              : 'text-slate-400'
+                          }`}
+                        >
+                          {step.label}
+                        </h4>
+                        <span className="text-[11px] font-mono text-slate-400 block">
+                          Stage {step.number} of 3
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-slate-400 leading-snug">
+                      {step.description}
+                    </p>
+
+                    {/* Step Status Badge */}
+                    <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px] font-mono">
+                      <span className="text-slate-500">State:</span>
+                      <span
+                        className={`font-semibold capitalize ${
+                          status === 'completed'
+                            ? 'text-emerald-400'
+                            : status === 'active'
+                            ? 'text-cyan-400 animate-pulse'
+                            : status === 'error'
+                            ? 'text-rose-400'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {status}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Progress Bar */}
-          <div className="space-y-2">
+          <div className="space-y-2.5">
+            <div className="flex justify-between items-center text-xs">
+              <span className="text-slate-400 font-medium">
+                {STAGE_LABELS[job.stage] || 'Pipeline processing...'}
+              </span>
+              <span className="font-mono text-cyan-400 font-semibold">
+                {job.percent.toFixed(1)}%
+              </span>
+            </div>
+
             <div className="w-full h-3 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800">
               <div
-                className="h-full bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-300"
+                className={`h-full rounded-full transition-all duration-300 ${
+                  job.status === 'error'
+                    ? 'bg-rose-500'
+                    : job.status === 'done'
+                    ? 'bg-emerald-500'
+                    : 'bg-gradient-to-r from-cyan-500 via-indigo-500 to-emerald-400'
+                }`}
                 style={{ width: `${Math.min(Math.max(job.percent, 3), 100)}%` }}
               />
             </div>
           </div>
 
-          {/* Completed State: Outputs Manifest */}
-          {job.status === 'done' && job.outputs && (
-            <div className="pt-4 space-y-5">
-              <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-                <CheckCircle2 size={18} />
-                <span>Video Streams Generated & Re-encoded (H.264 / AVC)</span>
+          {/* Readable Error State with Retry Button */}
+          {job.status === 'error' && (
+            <div className="p-6 rounded-xl bg-rose-950/30 border border-rose-500/40 text-rose-200 space-y-4">
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={24} className="text-rose-400 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-semibold text-rose-300">
+                    Pipeline Execution Failed
+                  </h3>
+                  <p className="text-xs text-rose-200/90 mt-1 leading-relaxed">
+                    {job.error ||
+                      'An unexpected error occurred during frame extraction, motion magnification, or neural inference.'}
+                  </p>
+                </div>
               </div>
 
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => navigate('/')}
+                  className="px-4 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-semibold text-xs shadow-md shadow-rose-600/20 transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RotateCcw size={14} />
+                  Retry / Upload Again
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRetryConnection}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors cursor-pointer"
+                >
+                  Refresh Status
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Queued State Card */}
+          {job.status === 'queued' && (
+            <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-800/40 text-xs text-amber-300 flex items-center gap-3">
+              <Clock size={18} className="flex-shrink-0" />
+              <span>
+                Job queued behind current computation. Sequential worker will automatically begin processing shortly.
+              </span>
+            </div>
+          )}
+
+          {/* Done State: Outputs Manifest */}
+          {job.status === 'done' && job.outputs && (
+            <div className="pt-2 space-y-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+                  <CheckCircle2 size={18} />
+                  <span>Output Streams Generated Successfully</span>
+                </div>
+                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded border border-emerald-800/40">
+                  Ready for Inspection
+                </span>
+              </div>
+
+              {/* Stream Cards Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {Object.entries(job.outputs).map(([streamKey, streamPath]) => (
                   <div
                     key={streamKey}
-                    className="p-3.5 rounded-xl bg-dark-900/60 border border-slate-800/80 flex items-center justify-between"
+                    className="p-3.5 rounded-xl bg-dark-900/70 border border-slate-800 flex items-center justify-between group hover:border-cyan-500/40 transition-colors"
                   >
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-lg bg-cyan-950/60 text-cyan-400 flex items-center justify-center">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-8 h-8 rounded-lg bg-cyan-950/60 text-cyan-400 flex items-center justify-center flex-shrink-0">
                         <Video size={16} />
                       </div>
-                      <div>
-                        <div className="text-xs font-semibold uppercase text-slate-300">
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold uppercase text-slate-200 tracking-wide">
                           {streamKey.replace('_', ' ')}
                         </div>
-                        <div className="text-[11px] font-mono text-slate-500 truncate max-w-[200px]">
+                        <div className="text-[11px] font-mono text-slate-500 truncate max-w-[180px]">
                           {streamPath}
                         </div>
                       </div>
@@ -163,9 +456,10 @@ export const Result: React.FC = () => {
                       href={`${API_BASE_URL}${streamPath}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-cyan-400 transition-colors"
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 hover:text-cyan-300 text-[11px] font-mono text-cyan-400 border border-slate-700/60 transition-colors flex items-center gap-1 flex-shrink-0"
                     >
-                      Open
+                      <Play size={10} className="fill-current" />
+                      View
                     </a>
                   </div>
                 ))}
@@ -174,25 +468,9 @@ export const Result: React.FC = () => {
               <div className="p-4 rounded-xl bg-cyan-950/20 border border-cyan-800/30 text-xs text-cyan-300 flex items-start gap-2.5">
                 <FileCheck size={16} className="flex-shrink-0 mt-0.5" />
                 <span>
-                  All outputs are synchronized in frame count, FPS, and resolution with HTTP 206 Range support. Ready for video slider and multi-stream player integration.
+                  All streams have equal frame count and framerate with HTTP 206 Partial Content range support.
                 </span>
               </div>
-            </div>
-          )}
-
-          {job.status === 'queued' && (
-            <div className="p-4 rounded-xl bg-amber-950/20 border border-amber-800/30 text-xs text-amber-300 flex items-center gap-2.5">
-              <Clock size={16} />
-              <span>
-                Job is in queue. Processing will start immediately once the current model forward pass finishes.
-              </span>
-            </div>
-          )}
-
-          {job.status === 'error' && (
-            <div className="p-4 rounded-xl bg-rose-950/20 border border-rose-800/30 text-xs text-rose-300 flex items-center gap-2.5">
-              <XCircle size={16} />
-              <span>{job.error || 'An error occurred during pipeline execution.'}</span>
             </div>
           )}
         </div>
