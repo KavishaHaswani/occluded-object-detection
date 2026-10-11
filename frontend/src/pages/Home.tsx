@@ -19,6 +19,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { createJob, getSamples, SampleItem, API_BASE_URL } from '../api';
+import { MetricsPanel } from '../components/MetricsPanel';
+import { AboutSection } from '../components/AboutSection';
 
 interface FileValidationState {
   isValidating: boolean;
@@ -677,13 +679,32 @@ export const Home: React.FC = () => {
         </div>
 
         {isLoadingSamples ? (
-          <div className="glass-card rounded-2xl p-10 text-center text-slate-400 text-sm flex items-center justify-center gap-2">
-            <Loader2 size={16} className="animate-spin text-cyan-400" />
-            Loading demo samples...
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[1, 2, 3].map((sk) => (
+              <div
+                key={sk}
+                className="glass-card rounded-xl overflow-hidden border border-slate-800 animate-pulse"
+              >
+                <div className="aspect-video bg-slate-800/60" />
+                <div className="p-4 space-y-3">
+                  <div className="h-4 bg-slate-800/80 rounded w-2/3" />
+                  <div className="h-3 bg-slate-800/60 rounded w-full" />
+                  <div className="h-3 bg-slate-800/40 rounded w-4/5" />
+                  <div className="pt-2 border-t border-slate-800/60 flex justify-between">
+                    <div className="h-3 bg-slate-800/60 rounded w-16" />
+                    <div className="h-3 bg-slate-800/60 rounded w-24" />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         ) : samples.length === 0 ? (
-          <div className="glass-card rounded-2xl p-10 text-center text-slate-500 text-sm">
-            No precomputed samples available in samples/ directory.
+          <div className="glass-card rounded-2xl p-12 text-center text-slate-400 space-y-3 border border-slate-800">
+            <Film size={36} className="mx-auto text-slate-600" />
+            <h3 className="text-sm font-semibold text-slate-300">No Demo Samples Available</h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              Precomputed demo clips can be placed in the samples/ directory on the server to appear here automatically.
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -740,6 +761,16 @@ export const Home: React.FC = () => {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Quantitative Metrics & Benchmark Section */}
+      <section>
+        <MetricsPanel />
+      </section>
+
+      {/* "How It Works" & "Limitations" Technical Documentation */}
+      <section>
+        <AboutSection />
       </section>
     </div>
   );

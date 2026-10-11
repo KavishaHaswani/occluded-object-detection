@@ -1,0 +1,68 @@
+{
+  "notice": "PLACEHOLDER VALUES - REPLACE WITH REAL RESULTS",
+  "dataset": "MoCA-Mask Benchmark (Motion Camouflaged Animals)",
+  "benchmark_description": "Quantitative comparison of the appearance baseline vs the Eulerian motion-amplified two-stream fusion pipeline on challenging camouflaged video sequences.",
+  "status": "REPLACE WITH REAL RESULTS",
+  "last_updated": "2026-10-11",
+  "metrics": [
+    {
+      "id": "iou",
+      "name": "Intersection over Union",
+      "symbol": "mIoU",
+      "description": "Area of overlap between predicted camouflage mask and ground truth mask divided by area of union.",
+      "direction": "higher_better",
+      "baseline": 0.542,
+      "amplified": 0.687,
+      "relative_delta": "+26.8%",
+      "delta_direction": "positive"
+    },
+    {
+      "id": "dice",
+      "name": "Dice Coefficient",
+      "symbol": "Dice",
+      "description": "Harmonic mean of boundary precision and recall quantifying mask contour accuracy.",
+      "direction": "higher_better",
+      "baseline": 0.614,
+      "amplified": 0.762,
+      "relative_delta": "+24.1%",
+      "delta_direction": "positive"
+    },
+    {
+      "id": "mae",
+      "name": "Mean Absolute Error",
+      "symbol": "MAE",
+      "description": "Average pixel-wise error across video frames (lower is better; reflects false-positive clutter).",
+      "direction": "lower_better",
+      "baseline": 0.048,
+      "amplified": 0.027,
+      "relative_delta": "-43.8%",
+      "delta_direction": "positive"
+    },
+    {
+      "id": "s_measure",
+      "name": "Structure-measure",
+      "symbol": "S_α",
+      "description": "Standard camouflage evaluation metric measuring region-aware and object-aware structural similarity.",
+      "direction": "higher_better",
+      "baseline": 0.695,
+      "amplified": 0.823,
+      "relative_delta": "+18.4%",
+      "delta_direction": "positive"
+    },
+    {
+      "id": "weighted_f_measure",
+      "name": "Weighted F-measure",
+      "symbol": "F_β^w",
+      "description": "Precision-recall balance adjusted with spatial distance weighting to penalize boundary bleed.",
+      "direction": "higher_better",
+      "baseline": 0.581,
+      "amplified": 0.739,
+      "relative_delta": "+27.2%",
+      "delta_direction": "positive"
+    }
+  ],
+  "summary": {
+    "key_takeaway": "Incorporating Eulerian motion-amplified optical flow reduces segmentation error (MAE) by 43.8% and boosts IoU by 26.8% over single-stream appearance models on animals evading visual contrast.",
+    "average_gain": "+28.1%"
+  }
+}

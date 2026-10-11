@@ -2,7 +2,7 @@
 .venv/
 venv/
 cache/
-data/
+/data/
 checkpoints/
 *.pth
 /kaggle_notebook/results

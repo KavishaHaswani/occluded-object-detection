@@ -11,6 +11,7 @@ import {
   RotateCcw,
   AlertTriangle,
   Play,
+  Download,
 } from 'lucide-react';
 import { getJob, JobResponse, API_BASE_URL } from '../api';
 import { BeforeAfterSlider } from '../components/BeforeAfterSlider';
@@ -432,14 +433,40 @@ export const Result: React.FC = () => {
                 <PipelineStageViewer outputs={job.outputs} />
 
                 <div className="space-y-4 pt-4 border-t border-slate-800/80">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-                      <CheckCircle2 size={18} />
-                      <span>Output Streams Generated Successfully</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div>
+                      <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+                        <CheckCircle2 size={18} />
+                        <span>Output Streams Generated Successfully</span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Download or preview synchronized video deliverables
+                      </p>
                     </div>
-                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded border border-emerald-800/40">
-                      Ready for Inspection
-                    </span>
+
+                    {/* Quick Download Buttons */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      {job.outputs.amplified && (
+                        <a
+                          href={`${API_BASE_URL}${job.outputs.amplified}`}
+                          download="amplified_result.mp4"
+                          className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-semibold text-xs transition-all flex items-center gap-1.5 shadow-md shadow-cyan-500/20"
+                        >
+                          <Download size={13} />
+                          Download Amplified Result
+                        </a>
+                      )}
+                      {job.outputs.raw && (
+                        <a
+                          href={`${API_BASE_URL}${job.outputs.raw}`}
+                          download="raw_input.mp4"
+                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium transition-colors flex items-center gap-1.5 border border-slate-700/60"
+                        >
+                          <Download size={13} />
+                          Raw Video
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   {/* Stream Cards Grid */}
@@ -457,21 +484,32 @@ export const Result: React.FC = () => {
                             <div className="text-xs font-semibold uppercase text-slate-200 tracking-wide">
                               {streamKey.replace('_', ' ')}
                             </div>
-                            <div className="text-[11px] font-mono text-slate-500 truncate max-w-[180px]">
+                            <div className="text-[11px] font-mono text-slate-500 truncate max-w-[150px]">
                               {streamPath}
                             </div>
                           </div>
                         </div>
 
-                        <a
-                          href={`${API_BASE_URL}${streamPath}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 hover:text-cyan-300 text-[11px] font-mono text-cyan-400 border border-slate-700/60 transition-colors flex items-center gap-1 flex-shrink-0"
-                        >
-                          <Play size={10} className="fill-current" />
-                          View
-                        </a>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <a
+                            href={`${API_BASE_URL}${streamPath}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-cyan-500/20 hover:text-cyan-300 text-[11px] font-mono text-cyan-400 border border-slate-700/60 transition-colors flex items-center gap-1"
+                          >
+                            <Play size={10} className="fill-current" />
+                            View
+                          </a>
+                          <a
+                            href={`${API_BASE_URL}${streamPath}`}
+                            download={`${streamKey}.mp4`}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-300 border border-slate-700/60 transition-colors flex items-center gap-1"
+                            title={`Download ${streamKey}.mp4`}
+                          >
+                            <Download size={11} />
+                            Save
+                          </a>
+                        </div>
                       </div>
                     ))}
                   </div>
