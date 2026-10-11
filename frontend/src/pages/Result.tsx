@@ -13,6 +13,7 @@ import {
   Play,
 } from 'lucide-react';
 import { getJob, JobResponse, API_BASE_URL } from '../api';
+import { BeforeAfterSlider } from '../components/BeforeAfterSlider';
 
 interface StepDefinition {
   id: string;
@@ -418,18 +419,22 @@ export const Result: React.FC = () => {
             </div>
           )}
 
-          {/* Done State: Outputs Manifest */}
+          {/* Done State: Outputs Manifest & Before/After Slider */}
           {job.status === 'done' && job.outputs && (
-            <div className="pt-2 space-y-5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
-                  <CheckCircle2 size={18} />
-                  <span>Output Streams Generated Successfully</span>
+            <div className="pt-2 space-y-8">
+              {/* Interactive Before/After Comparison Slider */}
+              <BeforeAfterSlider outputs={job.outputs} />
+
+              <div className="space-y-4 pt-4 border-t border-slate-800/80">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-emerald-400 text-sm font-semibold">
+                    <CheckCircle2 size={18} />
+                    <span>Output Streams Generated Successfully</span>
+                  </div>
+                  <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded border border-emerald-800/40">
+                    Ready for Inspection
+                  </span>
                 </div>
-                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-950/60 px-2.5 py-0.5 rounded border border-emerald-800/40">
-                  Ready for Inspection
-                </span>
-              </div>
 
               {/* Stream Cards Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -470,6 +475,7 @@ export const Result: React.FC = () => {
                 <span>
                   All streams have equal frame count and framerate with HTTP 206 Partial Content range support.
                 </span>
+              </div>
               </div>
             </div>
           )}
