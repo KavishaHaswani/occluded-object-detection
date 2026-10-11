@@ -114,3 +114,38 @@ Expected input layout per sequence:
 - `optical_flow.py` defaults to Farneback (classical, CPU-friendly). The RAFT
   wrapper is provided but requires downloading pretrained weights; it will be more accurate on hard/camouflaged
   cases (this is what SLT-Net and EMIP use as their flow source).
+
+## Running the Web App
+
+The repository includes a web interface with a synchronized multi-stream player and split comparison slider:
+
+- `backend/`: FastAPI backend service wrapping the inference pipeline.
+- `frontend/`: React + Vite + TypeScript web application with dark-mode glassmorphic controls.
+- `samples/`: Storage for demo clips and precomputed outputs.
+
+### 1. Start the Backend
+
+```bash
+# Create and activate virtual environment (already set up in project root)
+source .venv/bin/activate
+
+# Install backend dependencies (if setting up fresh)
+pip install -r backend/requirements.txt
+
+# Start the FastAPI server (runs on http://localhost:8000)
+cd backend
+uvicorn app.main:app --reload --port 8000
+```
+
+### 2. Start the Frontend
+
+In a separate terminal:
+
+```bash
+# Install frontend dependencies and start Vite dev server
+cd frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:5173` in your browser. You can select pre-loaded sample clips or upload custom video clips, tune magnification parameters (&alpha;, frequency cutoff, window size), and view real-time synchronized detections.

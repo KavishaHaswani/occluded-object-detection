@@ -1,4 +1,6 @@
 .env
+.venv/
+venv/
 cache/
 data/
 checkpoints/
@@ -11,3 +13,9 @@ kaggle_notebook/_list_out.py
 best_model/
 __pycache__/
 .DS_Store
+backend/media/
+frontend/node_modules/
+frontend/dist/
+clip.mp4
+out/
+demo_output.mp4
