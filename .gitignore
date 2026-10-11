@@ -8,3 +8,6 @@ checkpoints/
 /kaggle_notebook/results3
 kaggle_notebook/dl_err.txt
 kaggle_notebook/_list_out.py
+best_model/
+__pycache__/
+.DS_Store
