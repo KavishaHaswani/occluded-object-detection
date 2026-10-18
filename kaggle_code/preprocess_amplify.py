@@ -4,13 +4,19 @@ preprocess_amplify.py
 Run this ONCE per dataset (or once per multiple datasets, via --data_roots)
 before training/evaluation. It:
   1. Reads every frame of a video sequence.
-  2. Runs Eulerian motion amplification in sliding windows (motion_amplification.py).
-  3. Computes optical flow between every consecutive pair of AMPLIFIED frames
-     (optical_flow.py) and saves the normalized motion-magnitude map.
+  2. Runs Eulerian motion amplification in sliding windows (motion_amplification.py),
+     UNLESS --no_amplify is passed.
+  3. Computes optical flow between every consecutive pair of frames (amplified
+     in the normal path, raw in --no_amplify mode) and saves the normalized
+     motion-magnitude map.
 
 Doing this once and caching to disk (rather than inside the DataLoader) matters
 because amplification needs a whole window of frames and is too slow to redo on
 every __getitem__ call during training.
+
+ABLATION: --no_amplify builds the "without motion amplification" cache used by
+the raw-cache training run. Always point such a run at a SEPARATE cache_root
+(e.g. /kaggle/working/cache_raw) so raw and amplified motion maps never mix.
 
 Expected MoCA-Mask style input layout (adjust `list_sequences` if yours differs):
 
@@ -105,7 +111,7 @@ def load_frames(seq_dir: Path) -> tuple[list[np.ndarray], list[str]]:
 
 
 def process_sequence(seq_dir: Path, cache_root: Path, fps: float, window_size: int, overlap: int,
-                     motion_size: int = 0, save_amplified: bool = False):
+                     motion_size: int = 0, save_amplified: bool = False, no_amplify: bool = False):
     try:
         frames, frame_files = load_frames(seq_dir)
     except FileNotFoundError as e:
@@ -116,24 +122,29 @@ def process_sequence(seq_dir: Path, cache_root: Path, fps: float, window_size: i
         print(f"  [skip] no frames found in {seq_dir}")
         return
 
-    print(f"  amplifying {len(frames)} frames ...")
-    amplified = amplify_video_in_windows(
-        frames, fps=fps, window_size=window_size, overlap=overlap,
-        low_hz=0.2, high_hz=3.0, alpha=15.0, levels=4,
-    )
+    if no_amplify:
+        print(f"  [raw] skipping Eulerian amplification, using {len(frames)} raw frames ...")
+        processed = frames
+    else:
+        print(f"  amplifying {len(frames)} frames ...")
+        processed = amplify_video_in_windows(
+            frames, fps=fps, window_size=window_size, overlap=overlap,
+            low_hz=0.2, high_hz=3.0, alpha=15.0, levels=4,
+        )
 
     out_mot_dir = cache_root / seq_dir.name / "motion"
     out_mot_dir.mkdir(parents=True, exist_ok=True)
 
-    if save_amplified:
+    if save_amplified and not no_amplify:
         out_amp_dir = cache_root / seq_dir.name / "amplified"
         out_amp_dir.mkdir(parents=True, exist_ok=True)
-        for fname, amp_frame in zip(frame_files, amplified):
+        for fname, amp_frame in zip(frame_files, processed):
             cv2.imwrite(str(out_amp_dir / fname), amp_frame)
 
-    print("  computing optical flow on amplified frames ...")
-    for t in range(1, len(amplified)):
-        motion_map = compute_motion_map(amplified[t - 1], amplified[t], backend="farneback")
+    domain = "raw frames" if no_amplify else "amplified frames"
+    print(f"  computing optical flow on {domain} ...")
+    for t in range(1, len(processed)):
+        motion_map = compute_motion_map(processed[t - 1], processed[t], backend="farneback")
         if motion_size and motion_size > 0:
             motion_map = cv2.resize(motion_map, (motion_size, motion_size))
         motion_map = motion_map.astype(np.float16)
@@ -151,13 +162,15 @@ def process_sequence(seq_dir: Path, cache_root: Path, fps: float, window_size: i
 
 
 def process_dataset(data_root: Path, cache_root: Path, dataset_name: str, fps: float, window_size: int,
-                    overlap: int, motion_size: int = 0, save_amplified: bool = False):
+                    overlap: int, motion_size: int = 0, save_amplified: bool = False,
+                    no_amplify: bool = False):
     dataset_cache_root = cache_root / dataset_name
     sequences = list_sequences(data_root)
     print(f"[{dataset_name}] found {len(sequences)} sequences under {data_root}")
     for seq_dir in sequences:
         print(f"[{dataset_name}] processing {seq_dir.name} ...")
-        process_sequence(seq_dir, dataset_cache_root, fps, window_size, overlap, motion_size, save_amplified)
+        process_sequence(seq_dir, dataset_cache_root, fps, window_size, overlap, motion_size,
+                         save_amplified, no_amplify)
 
 
 def parse_named_roots(items: list[str]) -> dict[str, str]:
@@ -185,6 +198,9 @@ def main():
                          help="Resize motion maps to this square size before saving (0 = keep original).")
     parser.add_argument("--save_amplified", action="store_true",
                          help="Also cache amplified frames (not used by dataset.py; off by default to save disk).")
+    parser.add_argument("--no_amplify", action="store_true",
+                         help="ABlation: skip Eulerian amplification and compute optical flow directly on the "
+                              "raw frames (use a separate --cache_root so raw/amplified maps never mix).")
     args = parser.parse_args()
 
     if not args.data_root and not args.data_roots:
@@ -201,9 +217,10 @@ def main():
 
     for dataset_name, path in named_roots.items():
         process_dataset(Path(path), cache_root, dataset_name, args.fps, args.window_size, args.overlap,
-                        args.motion_size, args.save_amplified)
+                        args.motion_size, args.save_amplified, args.no_amplify)
 
-    print(f"\nDone. Cached amplified frames + motion maps under {cache_root}/<dataset_name>/...")
+    mode = "raw (unamplified)" if args.no_amplify else "amplified"
+    print(f"\nDone. Cached {mode} motion maps under {cache_root}/<dataset_name>/...")
     print("Point each DatasetSource's cache_root in dataset.py at one of these subfolders.")
 
 

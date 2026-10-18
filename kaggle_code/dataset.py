@@ -15,6 +15,7 @@ doesn't match this layout (see `make_custom_adapter` for a quick factory).
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Callable, NamedTuple
@@ -27,6 +28,25 @@ from torch.utils.data import Dataset
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
+
+
+def load_split_sequences(split_dir: Path, split: str, source_name: str) -> set:
+    """Loads the sequence-level split file <split_dir>/<source_name>_<split>.json
+    written by make_split.py and returns it as a set of sequence names.
+
+    Raises if the file is missing: silently training on everything when a split
+    was requested would hide train/val/test leakage.
+    """
+    path = Path(split_dir) / f"{source_name}_{split}.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Split file not found: {path}. Run make_split.py first (it writes "
+            f"<source>_<split>.json files), or drop --split_dir to train on all data."
+        )
+    seqs = set(json.loads(path.read_text()))
+    if not seqs:
+        raise ValueError(f"Split file {path} is empty - refusing to build a 0-sample dataset.")
+    return seqs
 
 
 class DatasetSource(NamedTuple):
@@ -145,8 +165,11 @@ class MultiSourceVCODDataset(Dataset):
     points into each source's own folder.
     """
 
-    def __init__(self, sources: list[DatasetSource], image_size: int = 352):
+    def __init__(self, sources: list[DatasetSource], image_size: int = 352,
+                 split_dir: str | None = None, split: str | None = None):
         self.image_size = image_size
+        self.split_dir = split_dir
+        self.split = split
         self.samples = []  # list of dicts, each tagged with its source name
 
         for source in sources:
@@ -156,15 +179,27 @@ class MultiSourceVCODDataset(Dataset):
                 print(f"  [warn] data_root not found, skipping source '{source.name}': {data_root}")
                 continue
 
+            allowed_seqs = None
+            if split_dir is not None:
+                if not split:
+                    raise ValueError("split_dir was given but split is empty (expected train/val/test).")
+                allowed_seqs = load_split_sequences(Path(split_dir), split, source.name)
+
+            n_seqs_kept = 0
+            n_seqs_skipped = 0
             n_before = len(self.samples)
             for seq_dir in sorted(data_root.iterdir()):
                 if not seq_dir.is_dir():
+                    continue
+                if allowed_seqs is not None and seq_dir.name not in allowed_seqs:
+                    n_seqs_skipped += 1
                     continue
                 motion_dir = cache_root / seq_dir.name / "motion"
                 if not motion_dir.exists():
                     continue  # this sequence hasn't been preprocessed yet
 
                 entries = source.adapter(seq_dir)
+                n_entries_used = 0
                 for e in entries:
                     motion_file = motion_dir / f"{e['stem']}.npy"
                     if motion_file.exists():
@@ -177,7 +212,14 @@ class MultiSourceVCODDataset(Dataset):
                                 "sequence": seq_dir.name,
                             }
                         )
-            print(f"  [{source.name}] added {len(self.samples) - n_before} samples")
+                        n_entries_used += 1
+                if n_entries_used:
+                    n_seqs_kept += 1
+            label = f"split={split}" if split_dir is not None else "split=all"
+            print(
+                f"  [{source.name}] {label}: {n_seqs_kept} sequences with cached motion used, "
+                f"{n_seqs_skipped} outside split, {len(self.samples) - n_before} samples"
+            )
 
         print(f"Total merged samples across {len(sources)} sources: {len(self.samples)}")
 
@@ -203,7 +245,7 @@ class MultiSourceVCODDataset(Dataset):
             h_m, w_m = self.image_size, self.image_size
         # Resize to target if shapes differ
         if (h_m != self.image_size) or (w_m != self.image_size):
-            motion = cv2.resize(motion, (self.image_size, self.image_size))
+            motion = cv2.resize(motion.astype(np.float32), (self.image_size, self.image_size))
         motion = motion.astype(np.float32)
         if motion.ndim == 2:
             motion = motion
