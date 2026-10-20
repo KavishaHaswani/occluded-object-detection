@@ -95,6 +95,8 @@ class EulerianMotionAmplifier:
         alpha: float = 15.0,
         levels: int = 4,
         pyramid_level_for_amplification: int = 2,
+        brightness_only: bool = False,
+        coarse_only: bool = False,
     ):
         self.fps = fps
         self.low_hz = low_hz
@@ -104,6 +106,8 @@ class EulerianMotionAmplifier:
         # We only amplify a mid spatial-frequency band (not the finest, which is
         # dominated by noise, and not the coarsest, which barely contains texture).
         self.target_level = pyramid_level_for_amplification
+        self.brightness_only = brightness_only
+        self.coarse_only = coarse_only
 
     def amplify_window(self, frames_bgr_uint8: list[np.ndarray]) -> list[np.ndarray]:
         """
@@ -118,26 +122,45 @@ class EulerianMotionAmplifier:
                 f"(got {T} frames, need >= {min_required}). Increase window size."
             )
 
-        frames_f = [f.astype(np.float32) / 255.0 for f in frames_bgr_uint8]
+        if self.brightness_only:
+            y_channels = []
+            uv_channels = []
+            for f in frames_bgr_uint8:
+                yuv = cv2.cvtColor(f, cv2.COLOR_BGR2YUV)
+                y_channels.append(yuv[:, :, 0].astype(np.float32) / 255.0)
+                uv_channels.append(yuv[:, :, 1:3])
+            pyramids = [build_laplacian_pyramid(y, self.levels) for y in y_channels]
+        else:
+            frames_f = [f.astype(np.float32) / 255.0 for f in frames_bgr_uint8]
+            pyramids = [build_laplacian_pyramid(f, self.levels) for f in frames_f]
 
-        # Build Laplacian pyramids for every frame in the window.
-        pyramids = [build_laplacian_pyramid(f, self.levels) for f in frames_f]
+        if self.coarse_only:
+            # Apply gain on coarse Laplacian levels (1 to levels-1), leaving level 0 (noise) unamplified
+            for l in range(1, self.levels):
+                level_stack = np.stack([p[l] for p in pyramids], axis=0)
+                filtered = temporal_bandpass_filter(level_stack, self.fps, self.low_hz, self.high_hz)
+                amp_l = level_stack + self.alpha * filtered
+                for t in range(T):
+                    pyramids[t][l] = amp_l[t]
+        else:
+            # Stack the target level across time: shape (T, H_l, W_l, C) or (T, H_l, W_l)
+            level_stack = np.stack([p[self.target_level] for p in pyramids], axis=0)
+            filtered = temporal_bandpass_filter(level_stack, self.fps, self.low_hz, self.high_hz)
+            amplified_level = level_stack + self.alpha * filtered
+            for t in range(T):
+                pyramids[t][self.target_level] = amplified_level[t]
 
-        # Stack the target level across time: shape (T, H_l, W_l, C)
-        level_stack = np.stack([p[self.target_level] for p in pyramids], axis=0)
-
-        # Temporal bandpass filter + amplify.
-        filtered = temporal_bandpass_filter(level_stack, self.fps, self.low_hz, self.high_hz)
-        amplified_level = level_stack + self.alpha * filtered
-
-        # Rebuild each frame's pyramid with the amplified target level, then collapse.
+        # Rebuild each frame's pyramid, then collapse.
         amplified_frames = []
         for t in range(T):
-            pyr = list(pyramids[t])
-            pyr[self.target_level] = amplified_level[t]
-            recon = collapse_laplacian_pyramid(pyr)
+            recon = collapse_laplacian_pyramid(pyramids[t])
             recon = np.clip(recon, 0.0, 1.0)
-            amplified_frames.append((recon * 255.0).astype(np.uint8))
+            recon_u8 = (recon * 255.0).astype(np.uint8)
+            if self.brightness_only:
+                recomb = np.dstack([recon_u8, uv_channels[t]])
+                amplified_frames.append(cv2.cvtColor(recomb, cv2.COLOR_YUV2BGR))
+            else:
+                amplified_frames.append(recon_u8)
 
         return amplified_frames
 

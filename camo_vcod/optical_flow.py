@@ -47,18 +47,38 @@ def farneback_flow(prev_bgr_uint8: np.ndarray, curr_bgr_uint8: np.ndarray) -> np
     return flow  # (H, W, 2)
 
 
-def flow_to_magnitude(flow: np.ndarray, normalize: bool = True) -> np.ndarray:
+def flow_to_magnitude(
+    flow: np.ndarray,
+    normalize: bool = True,
+    median_sub: bool = False,
+    norm_mode: str = "max",
+) -> np.ndarray:
     """
     Converts a (H, W, 2) flow field into a single-channel magnitude map.
-    If normalize=True, scales to [0, 1] using the frame's own max (robust to
-    per-clip motion scale differences); otherwise returns raw pixel-displacement
-    magnitude.
+    - median_sub: if True, subtracts the median flow vector (u - med(u), v - med(v))
+      before computing magnitude, removing camera ego-motion.
+    - norm_mode:
+        "max": divide by frame's own max (robust to clip-level motion scale differences)
+        "percentile": robust per-frame 1-99 percentile scaling to [0, 1]
     """
-    magnitude = np.sqrt(flow[..., 0] ** 2 + flow[..., 1] ** 2)
+    u = flow[..., 0]
+    v = flow[..., 1]
+    if median_sub:
+        u = u - np.median(u)
+        v = v - np.median(v)
+    magnitude = np.sqrt(u ** 2 + v ** 2)
+
     if normalize:
-        max_val = magnitude.max()
-        if max_val > 1e-6:
-            magnitude = magnitude / max_val
+        if norm_mode == "percentile":
+            p1, p99 = np.percentile(magnitude, (1.0, 99.0))
+            if p99 > p1 + 1e-6:
+                magnitude = np.clip((magnitude - p1) / (p99 - p1), 0.0, 1.0)
+            else:
+                magnitude = np.zeros_like(magnitude)
+        else:
+            max_val = magnitude.max()
+            if max_val > 1e-6:
+                magnitude = magnitude / max_val
     return magnitude.astype(np.float32)
 
 
@@ -105,9 +125,11 @@ def compute_motion_map(
     curr_frame_uint8: np.ndarray,
     backend: str = "farneback",
     raft_estimator: "RaftFlowEstimator | None" = None,
+    median_sub: bool = False,
+    norm_mode: str = "max",
 ) -> np.ndarray:
     """
-    Convenience wrapper: prev/curr should both be AMPLIFIED frames.
+    Convenience wrapper: prev/curr should both be AMPLIFIED frames (or both raw in ablation).
     Returns a single-channel, normalized motion-magnitude map (H, W), float32 in [0, 1].
     """
     if backend == "farneback":
@@ -117,4 +139,4 @@ def compute_motion_map(
         flow = raft_estimator(prev_frame_uint8, curr_frame_uint8)
     else:
         raise ValueError(f"Unknown backend: {backend}")
-    return flow_to_magnitude(flow, normalize=True)
+    return flow_to_magnitude(flow, normalize=True, median_sub=median_sub, norm_mode=norm_mode)

@@ -195,6 +195,8 @@ def main(explicit_args: list[str] | None = None):
                         help="Skip the end-of-training evaluation on the test split.")
     parser.add_argument("--eval_every", type=int, default=1,
                         help="Validate every N epochs.")
+    parser.add_argument("--arm_name", type=str, default="default",
+                        help="Experimental arm identifier (e.g. raw, amp_old, amp_v2).")
 
     if explicit_args is not None:
         args = parser.parse_args(explicit_args)
@@ -208,7 +210,7 @@ def main(explicit_args: list[str] | None = None):
 
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device} | seed: {args.seed} | split_dir: {args.split_dir}")
+    print(f"Using device: {device} | seed: {args.seed} | split_dir: {args.split_dir} | arm: {args.arm_name}")
 
     split_dir_used = args.split_dir if args.data_roots else None
     dataset = build_dataset(args, split=args.split)
@@ -250,6 +252,29 @@ def main(explicit_args: list[str] | None = None):
 
     ckpt_dir = Path(args.checkpoint_dir)
     ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    settings = {
+        "arm_name": args.arm_name,
+        "seed": args.seed,
+        "epochs": args.epochs,
+        "batch_size": args.batch_size,
+        "image_size": args.image_size,
+        "base_ch": args.base_ch,
+        "lr": args.lr,
+        "window_size": 40,
+        "overlap": 20,
+        "split": args.split,
+        "split_dir": str(args.split_dir) if args.split_dir else None,
+        "cache_root": str(args.cache_root),
+        "data_roots": args.data_roots,
+        "adapters": args.adapters,
+    }
+    cfg_p = Path(args.cache_root) / "preprocess_config.json"
+    if cfg_p.exists():
+        try:
+            settings["preprocess"] = json.loads(cfg_p.read_text())
+        except Exception:
+            pass
 
     best_path = ckpt_dir / "best_by_val.pth"
     last_path = ckpt_dir / "last_model.pth"
@@ -306,22 +331,40 @@ def main(explicit_args: list[str] | None = None):
             if is_better(val, best):
                 best = dict(val)
                 best["epoch"] = epoch
-                torch.save(model.state_dict(), best_path)
+                torch.save({
+                    "model": model.state_dict(),
+                    "settings": settings,
+                    "epoch": epoch,
+                    "best": best,
+                }, best_path)
                 line += " *best*"
 
         print(line)
         history.append(rec)
-        (ckpt_dir / "history.json").write_text(json.dumps(history, indent=2))
-        torch.save(model.state_dict(), last_path)
+        payload = {"settings": settings, "epochs": history}
+        (ckpt_dir / "history.json").write_text(json.dumps(payload, indent=2))
+        torch.save({
+            "model": model.state_dict(),
+            "settings": settings,
+            "epoch": epoch,
+            "best": best,
+        }, last_path)
 
     if best is None:
-        torch.save(model.state_dict(), best_path)
+        torch.save({
+            "model": model.state_dict(),
+            "settings": settings,
+            "epoch": args.epochs,
+            "note": "no validation; last weights saved as best",
+        }, best_path)
         best = {"epoch": args.epochs, "note": "no validation; last weights saved as best"}
 
     print(f"Training complete. Best by val: {best}")
 
     if split_dir_used and not args.no_final_test:
-        model.load_state_dict(torch.load(best_path, map_location=device))
+        state = torch.load(best_path, map_location=device)
+        state_dict = state["model"] if isinstance(state, dict) and "model" in state else state
+        model.load_state_dict(state_dict)
         test_dataset = build_dataset(args, split=args.test_split)
         if len(test_dataset) == 0:
             raise RuntimeError(f"Test split '{args.test_split}' is empty.")
@@ -335,6 +378,7 @@ def main(explicit_args: list[str] | None = None):
         per_frame, tags = evaluate_loader(model, test_loader, device)
         report = {
             "checkpoint": str(best_path),
+            "settings": settings,
             "seed": args.seed,
             "split_dir": str(args.split_dir),
             "test_split": args.test_split,

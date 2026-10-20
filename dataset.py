@@ -264,7 +264,10 @@ class MultiSourceVCODDataset(Dataset):
 
         mask = cv2.imread(str(item["gt"]), cv2.IMREAD_GRAYSCALE)
         mask = cv2.resize(mask, (self.image_size, self.image_size), interpolation=cv2.INTER_NEAREST)
-        mask = (mask > 127).astype(np.float32)
+        if mask.max() <= 2:
+            mask = (mask > 0).astype(np.float32)
+        else:
+            mask = (mask > 127).astype(np.float32)
         mask = torch.from_numpy(mask).unsqueeze(0).float()
 
         return rgb, motion, mask

@@ -87,10 +87,19 @@ def build_dataset(args, split: str | None = None) -> Dataset:
 
 
 @torch.no_grad()
-def evaluate_loader(model, loader, device) -> tuple[list[dict], list[tuple[str, str]]]:
-    """Runs the model over a loader and returns per-frame metric dicts plus (source, sequence) tags."""
+def evaluate_loader(model, loader, device) -> tuple[list[dict], list[dict], list[bool], list[bool], list[tuple[str, str]]]:
+    """Runs the model over a loader and returns:
+    - per_frame: metric dicts for model predictions
+    - zero_frame: metric dicts for all-zero baseline
+    - empty_gt_flags: boolean indicating whether gt mask was empty (sum == 0)
+    - pred_has_fg_flags: boolean indicating whether model predicted any foreground (pred > 0.5)
+    - tags: (source, sequence) pairs
+    """
     model.eval()
     per_frame: list[dict] = []
+    zero_frame: list[dict] = []
+    empty_gt_flags: list[bool] = []
+    pred_has_fg_flags: list[bool] = []
     tags: list[tuple[str, str]] = []
     for rgb, motion, mask in loader:
         rgb = rgb.to(device, non_blocking=True)
@@ -100,7 +109,12 @@ def evaluate_loader(model, loader, device) -> tuple[list[dict], list[tuple[str, 
         for i in range(probs.size(0)):
             pred = probs[i, 0].numpy()
             gt = mask[i, 0].numpy()
+            is_empty = bool(gt.sum() == 0)
+            has_pred_fg = bool((pred > 0.5).any())
             per_frame.append(evaluate_all(pred, gt))
+            zero_frame.append(evaluate_all(np.zeros_like(pred), gt))
+            empty_gt_flags.append(is_empty)
+            pred_has_fg_flags.append(has_pred_fg)
             tag = getattr(loader.dataset, "samples", None)
             if tag is not None:
                 idx = len(tags)
@@ -108,7 +122,7 @@ def evaluate_loader(model, loader, device) -> tuple[list[dict], list[tuple[str, 
                 tags.append((s["source"], s["sequence"]))
             else:
                 tags.append(("single", "single"))
-    return per_frame, tags
+    return per_frame, zero_frame, empty_gt_flags, pred_has_fg_flags, tags
 
 
 def aggregate(rows: list[dict], keys: list[str] = METRIC_KEYS) -> dict:
@@ -143,6 +157,8 @@ def main():
     parser.add_argument("--num_workers", type=int, default=0, help="DataLoader workers")
     parser.add_argument("--out_report", type=str, default=None, help="Optional output JSON path for test report")
     parser.add_argument("--compare_to", type=str, default=None, help="Optional test_report.json to compare metrics against")
+    parser.add_argument("--skip_empty_gt", action=argparse.BooleanOptionalAction, default=True,
+                        help="Compute aggregate metrics only on frames with non-empty GT (default: True)")
     args = parser.parse_args()
 
     args.adapters = parse_named_pairs(args.adapters)
@@ -165,16 +181,36 @@ def main():
         num_workers=args.num_workers, pin_memory=(device.type == "cuda"),
     )
 
-    per_frame, tags = evaluate_loader(model, loader, device)
+    per_frame, zero_frame, empty_gt_flags, pred_has_fg_flags, tags = evaluate_loader(model, loader, device)
 
-    overall = aggregate(per_frame)
-    by_source = group_metrics(per_frame, tags, by="source")
-    by_sequence = group_metrics(per_frame, tags, by="sequence")
+    n_total = len(per_frame)
+    n_empty = sum(empty_gt_flags)
+    fpr_empty = (sum(1 for e, fg in zip(empty_gt_flags, pred_has_fg_flags) if e and fg) / max(n_empty, 1)) if n_empty > 0 else 0.0
 
+    if args.skip_empty_gt:
+        eval_rows = [r for r, empty in zip(per_frame, empty_gt_flags) if not empty]
+        eval_zero = [z for z, empty in zip(zero_frame, empty_gt_flags) if not empty]
+        eval_tags = [t for t, empty in zip(tags, empty_gt_flags) if not empty]
+    else:
+        eval_rows, eval_zero, eval_tags = per_frame, zero_frame, tags
+
+    overall = aggregate(eval_rows)
+    overall_zero = aggregate(eval_zero)
+    by_source = group_metrics(eval_rows, eval_tags, by="source")
+    by_sequence = group_metrics(eval_rows, eval_tags, by="sequence")
+
+    filter_str = f"excluding {n_empty} empty-GT frames" if args.skip_empty_gt else "including all frames"
     print("\n" + "=" * 25 + f" EVALUATION RESULTS ({args.split}) " + "=" * 25)
-    print(f"Overall (n={overall['n_frames']}):")
+    print(f"Overall (n={overall['n_frames']}, {filter_str}):")
     for k in METRIC_KEYS:
         print(f"  {k:<12}: {overall[k]:.4f}")
+
+    print("\n" + "-" * 60)
+    print("EMPTY-GROUND-TRUTH & ALL-ZERO BASELINE ANALYSIS:")
+    print(f"  Empty-GT frames count          : {n_empty} / {n_total} ({n_empty/max(n_total,1)*100:.1f}%)")
+    print(f"  False Positive Rate on empty GT: {fpr_empty:.4f} (fraction where pred has foreground > 0.5)")
+    print(f"  All-Zero Baseline on evaluated : " + " ".join(f"{k}={overall_zero[k]:.4f}" for k in METRIC_KEYS))
+    print("-" * 60)
 
     if len(by_source) > 1 or list(by_source.keys())[0] != "single":
         print("\nBy Source:")
@@ -190,7 +226,14 @@ def main():
     report = {
         "checkpoint": str(args.checkpoint),
         "split": args.split,
+        "skip_empty_gt": args.skip_empty_gt,
+        "empty_gt_stats": {
+            "n_total": n_total,
+            "n_empty": n_empty,
+            "fpr_on_empty": fpr_empty,
+        },
         "overall": overall,
+        "all_zero_baseline": overall_zero,
         "by_source": by_source,
         "by_sequence": by_sequence,
     }

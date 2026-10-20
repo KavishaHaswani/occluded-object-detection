@@ -158,7 +158,8 @@ def main() -> None:
 
     for f in ("best_by_val.pth", "last_model.pth", "history.json", "test_report.json"):
         assert (ckpt / f).exists(), f"missing {f}"
-    history = json.loads((ckpt / "history.json").read_text())
+    history_data = json.loads((ckpt / "history.json").read_text())
+    history = history_data.get("epochs", history_data) if isinstance(history_data, dict) else history_data
     assert len(history) == 2 and all("val" in h for h in history), history
     report = json.loads((ckpt / "test_report.json").read_text())
     assert report["selection"]["metric"] == "val_IoU"
