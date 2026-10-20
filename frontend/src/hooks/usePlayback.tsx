@@ -124,6 +124,7 @@ export const PlaybackProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (!isRunning) return;
 
       const master =
+        videoElementsRef.current.get('side-master') ||
         videoElementsRef.current.get('slider-master') ||
         Array.from(videoElementsRef.current.values())[0];
       const videos = Array.from(videoElementsRef.current.values());

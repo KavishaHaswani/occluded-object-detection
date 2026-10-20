@@ -14,6 +14,7 @@ import {
   Download,
 } from 'lucide-react';
 import { getJob, JobResponse, API_BASE_URL } from '../api';
+import { SideBySidePlayer } from '../components/SideBySidePlayer';
 import { BeforeAfterSlider } from '../components/BeforeAfterSlider';
 import { PipelineStageViewer } from '../components/PipelineStageViewer';
 import { PlaybackProvider } from '../hooks/usePlayback';
@@ -61,6 +62,7 @@ export const Result: React.FC = () => {
   const [job, setJob] = useState<JobResponse | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState<boolean>(false);
+  const [layoutMode, setLayoutMode] = useState<'side-by-side' | 'slider'>('side-by-side');
 
   const pollingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -426,8 +428,55 @@ export const Result: React.FC = () => {
           {job.status === 'done' && job.outputs && (
             <PlaybackProvider>
               <div className="pt-2 space-y-8">
-                {/* 1. Synchronized Interactive Before/After Comparison Slider */}
-                <BeforeAfterSlider outputs={job.outputs} />
+                {/* 1. Synchronized Comparison Viewer with Layout Switcher */}
+                <div className="space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-1 border-b border-slate-800/80">
+                    <div>
+                      <h3 className="text-base font-semibold text-slate-100 flex items-center gap-2">
+                        <Video size={18} className="text-cyan-400" />
+                        <span>Camouflage Breaking Comparison</span>
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Synchronized comparison between appearance baseline and motion-amplified detection
+                      </p>
+                    </div>
+
+                    {/* Layout switcher: Side by side (default) vs Slider */}
+                    <div className="flex items-center gap-2 self-start sm:self-auto">
+                      <span className="text-xs text-slate-400 font-medium">Layout:</span>
+                      <div className="inline-flex bg-slate-900/90 p-1 rounded-xl border border-slate-800 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setLayoutMode('side-by-side')}
+                          className={`px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                            layoutMode === 'side-by-side'
+                              ? 'bg-cyan-500 text-slate-950 font-semibold shadow-sm'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Side by side
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLayoutMode('slider')}
+                          className={`px-3 py-1 rounded-lg font-medium transition-all cursor-pointer ${
+                            layoutMode === 'slider'
+                              ? 'bg-cyan-500 text-slate-950 font-semibold shadow-sm'
+                              : 'text-slate-400 hover:text-white'
+                          }`}
+                        >
+                          Slider
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {layoutMode === 'side-by-side' ? (
+                    <SideBySidePlayer outputs={job.outputs} />
+                  ) : (
+                    <BeforeAfterSlider outputs={job.outputs} />
+                  )}
+                </div>
 
                 {/* 2. Synchronized Pipeline Stage Viewer (Raw, Amp, Flow, Mask) with Overlay & SVG Architecture */}
                 <PipelineStageViewer outputs={job.outputs} />

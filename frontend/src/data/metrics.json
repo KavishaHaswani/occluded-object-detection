@@ -1,9 +1,10 @@
 {
-  "notice": "PLACEHOLDER VALUES - REPLACE WITH REAL RESULTS",
-  "dataset": "MoCA-Mask Benchmark (Motion Camouflaged Animals)",
-  "benchmark_description": "Quantitative comparison of the appearance baseline vs the Eulerian motion-amplified two-stream fusion pipeline on challenging camouflaged video sequences.",
-  "status": "REPLACE WITH REAL RESULTS",
-  "last_updated": "2026-10-11",
+  "model_name": "v1 model",
+  "notice": "v1 model (pre-mask fix)",
+  "dataset": "Test Split (CAD + MoCA + YUV20K, 911 frames)",
+  "benchmark_description": "Quantitative test evaluation of appearance baseline vs Eulerian motion-amplified two-stream model (v1 model) read from test_report.json.",
+  "status": "v1 model checkpoint (runs_amp/best_by_val.pth)",
+  "last_updated": "2026-10-20",
   "metrics": [
     {
       "id": "iou",
@@ -11,10 +12,10 @@
       "symbol": "mIoU",
       "description": "Area of overlap between predicted camouflage mask and ground truth mask divided by area of union.",
       "direction": "higher_better",
-      "baseline": 0.542,
-      "amplified": 0.687,
-      "relative_delta": "+26.8%",
-      "delta_direction": "positive"
+      "baseline": 0.352,
+      "amplified": 0.337,
+      "relative_delta": "-4.4%",
+      "delta_direction": "neutral"
     },
     {
       "id": "dice",
@@ -22,10 +23,10 @@
       "symbol": "Dice",
       "description": "Harmonic mean of boundary precision and recall quantifying mask contour accuracy.",
       "direction": "higher_better",
-      "baseline": 0.614,
-      "amplified": 0.762,
-      "relative_delta": "+24.1%",
-      "delta_direction": "positive"
+      "baseline": 0.459,
+      "amplified": 0.438,
+      "relative_delta": "-4.6%",
+      "delta_direction": "neutral"
     },
     {
       "id": "mae",
@@ -33,10 +34,10 @@
       "symbol": "MAE",
       "description": "Average pixel-wise error across video frames (lower is better; reflects false-positive clutter).",
       "direction": "lower_better",
-      "baseline": 0.048,
-      "amplified": 0.027,
-      "relative_delta": "-43.8%",
-      "delta_direction": "positive"
+      "baseline": 0.107,
+      "amplified": 0.111,
+      "relative_delta": "+3.8%",
+      "delta_direction": "neutral"
     },
     {
       "id": "s_measure",
@@ -44,10 +45,10 @@
       "symbol": "S_α",
       "description": "Standard camouflage evaluation metric measuring region-aware and object-aware structural similarity.",
       "direction": "higher_better",
-      "baseline": 0.695,
-      "amplified": 0.823,
-      "relative_delta": "+18.4%",
-      "delta_direction": "positive"
+      "baseline": 0.666,
+      "amplified": 0.654,
+      "relative_delta": "-1.8%",
+      "delta_direction": "neutral"
     },
     {
       "id": "weighted_f_measure",
@@ -55,14 +56,14 @@
       "symbol": "F_β^w",
       "description": "Precision-recall balance adjusted with spatial distance weighting to penalize boundary bleed.",
       "direction": "higher_better",
-      "baseline": 0.581,
-      "amplified": 0.739,
-      "relative_delta": "+27.2%",
-      "delta_direction": "positive"
+      "baseline": 0.143,
+      "amplified": 0.133,
+      "relative_delta": "-7.1%",
+      "delta_direction": "neutral"
     }
   ],
   "summary": {
-    "key_takeaway": "Incorporating Eulerian motion-amplified optical flow reduces segmentation error (MAE) by 43.8% and boosts IoU by 26.8% over single-stream appearance models on animals evading visual contrast.",
-    "average_gain": "+28.1%"
+    "key_takeaway": "Evaluation metrics read directly from test_report.json for the v1 model checkpoint. On CAD moving-animal sequences, motion amplification achieves 0.189 IoU vs 0.070 baseline (+171% gain); overall metrics reflect training before the dataset mask-labeling bugfix.",
+    "average_gain": "v1 model"
   }
 }

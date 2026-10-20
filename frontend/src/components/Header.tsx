@@ -23,7 +23,7 @@ export const Header: React.FC = () => {
         <div className="flex items-center gap-2 self-start md:self-auto">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono font-medium bg-cyan-950/60 text-cyan-400 border border-cyan-800/50">
             <Sparkles size={13} />
-            Eulerian VCOD
+            v1 model
           </span>
         </div>
       </div>

@@ -34,6 +34,7 @@ def load_checkpoint(
     checkpoint_path: str | Path,
     device: torch.device | str | None = None,
     base_ch: int = 32,
+    strict: bool = True,
 ) -> TwoStreamCOD:
     """
     Loads a TwoStreamCOD model from a checkpoint file.
@@ -80,7 +81,7 @@ def load_checkpoint(
         }
 
     model = TwoStreamCOD(base_ch=base_ch).to(target_device)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=strict)
     model.eval()
     setattr(model, "checkpoint_meta", meta)
     return model

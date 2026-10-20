@@ -26,6 +26,11 @@ import shutil
 import subprocess
 from typing import Callable
 
+# Ensure standard binary locations (such as Homebrew) are on PATH for ffmpeg
+for _extra in ("/opt/homebrew/bin", "/usr/local/bin"):
+    if _extra not in os.environ.get("PATH", "").split(os.pathsep) and os.path.isdir(_extra):
+        os.environ["PATH"] = f"{_extra}{os.pathsep}{os.environ.get('PATH', '')}"
+
 import cv2
 import numpy as np
 import torch
@@ -38,13 +43,14 @@ IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 
 # Module-level model cache to avoid reloading weights across repeated calls.
-_MODEL_CACHE: dict[tuple[str, int, str], TwoStreamCOD] = {}
+_MODEL_CACHE: dict[str, TwoStreamCOD] = {}
 
 
 def load_checkpoint(
     checkpoint_path: str | Path,
     device: torch.device | str | None = None,
     base_ch: int = 32,
+    strict: bool = True,
 ) -> TwoStreamCOD:
     """
     Loads a TwoStreamCOD model from a checkpoint file.
@@ -106,7 +112,7 @@ def load_checkpoint(
         }
 
     model = TwoStreamCOD(base_ch=base_ch).to(target_device)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=strict)
     model.eval()
     setattr(model, "checkpoint_meta", meta)
     return model
@@ -116,6 +122,7 @@ def get_cached_model(
     checkpoint_path: str | Path,
     base_ch: int = 32,
     device: torch.device | str | None = None,
+    strict: bool = True,
 ) -> TwoStreamCOD:
     """Retrieves a cached model instance or loads and caches it."""
     if device is None:
@@ -125,12 +132,12 @@ def get_cached_model(
     else:
         target_device = device
 
-    resolved_path = os.path.abspath(str(checkpoint_path))
-    cache_key = (resolved_path, base_ch, str(target_device))
+    resolved_path = str(Path(checkpoint_path).resolve())
+    cache_key = resolved_path
     if cache_key in _MODEL_CACHE:
         return _MODEL_CACHE[cache_key]
 
-    model = load_checkpoint(resolved_path, device=target_device, base_ch=base_ch)
+    model = load_checkpoint(resolved_path, device=target_device, base_ch=base_ch, strict=strict)
     _MODEL_CACHE[cache_key] = model
     return model
 
@@ -208,10 +215,10 @@ def run_pipeline(
     alpha: float = 15.0,
     low_hz: float = 0.2,
     high_hz: float = 3.0,
-    image_size: int = 352,
+    image_size: int = 256,
     base_ch: int = 32,
-    window_size: int = 60,
-    overlap: int = 30,
+    window_size: int = 40,
+    overlap: int = 20,
     progress_cb: Callable[[str, float], None] | None = None,
     write_side_by_side: bool = True,
 ) -> dict:
@@ -256,7 +263,7 @@ def run_pipeline(
 
     # 3. Model setup (using cached instance)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = get_cached_model(checkpoint_path=checkpoint_path, base_ch=base_ch, device=device)
+    model = get_cached_model(checkpoint_path=checkpoint_path, base_ch=base_ch, device=device, strict=True)
 
     h, w = frames[0].shape[:2]
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -393,10 +400,10 @@ def main():
     parser.add_argument("--alpha", type=float, default=15.0, help="Eulerian motion amplification factor")
     parser.add_argument("--low_hz", type=float, default=0.2, help="Temporal bandpass filter low cutoff (Hz)")
     parser.add_argument("--high_hz", type=float, default=3.0, help="Temporal bandpass filter high cutoff (Hz)")
-    parser.add_argument("--image_size", type=int, default=352, help="Image size for model input")
+    parser.add_argument("--image_size", type=int, default=256, help="Image size for model input")
     parser.add_argument("--base_ch", type=int, default=32, help="Base channel count for TwoStreamCOD")
-    parser.add_argument("--window_size", type=int, default=60, help="Sliding window size for motion amplification")
-    parser.add_argument("--overlap", type=int, default=30, help="Sliding window overlap size")
+    parser.add_argument("--window_size", type=int, default=40, help="Sliding window size for motion amplification")
+    parser.add_argument("--overlap", type=int, default=20, help="Sliding window overlap size")
     args = parser.parse_args()
 
     def cli_progress(stage: str, percent: float):

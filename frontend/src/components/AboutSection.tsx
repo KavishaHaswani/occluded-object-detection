@@ -52,7 +52,12 @@ export const AboutSection: React.FC = () => {
       <div className="p-6 rounded-2xl bg-amber-950/20 border border-amber-800/40 text-amber-200/90 space-y-4">
         <div className="flex items-center gap-2.5 text-amber-300 font-semibold text-sm">
           <ShieldAlert size={18} className="text-amber-400 flex-shrink-0" />
-          <h4 className="uppercase tracking-wider text-xs">Architectural & Experimental Limitations</h4>
+          <h4 className="uppercase tracking-wider text-xs">Architectural & Experimental Limitations (v1 model)</h4>
+        </div>
+
+        {/* Mandatory v1 model limitation disclosure */}
+        <div className="p-4 rounded-xl bg-amber-900/30 border border-amber-700/50 text-amber-100 font-medium text-xs leading-relaxed">
+          This model was trained before a mask-labeling bug was fixed, so its detections are limited. A retrained version is planned.
         </div>
 
         <ul className="space-y-3 text-xs text-slate-300/90 leading-relaxed pl-1">

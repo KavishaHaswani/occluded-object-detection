@@ -33,7 +33,9 @@ BACKEND_DIR = Path(__file__).resolve().parent
 DATA_DIR = BACKEND_DIR / "data"
 JOBS_DIR = DATA_DIR / "jobs"
 SAMPLES_DIR = REPO_ROOT / "samples"
-CHECKPOINT_PATH = REPO_ROOT / "best_model.zip"
+CHECKPOINT_PATH = REPO_ROOT / "runs_amp" / "best_by_val.pth"
+if not CHECKPOINT_PATH.exists():
+    CHECKPOINT_PATH = REPO_ROOT / "kaggle_notebook" / "reports" / "runs_amp" / "best_by_val.pth"
 
 JOBS_DIR.mkdir(parents=True, exist_ok=True)
 SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
