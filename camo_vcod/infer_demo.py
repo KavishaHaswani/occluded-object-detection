@@ -27,6 +27,64 @@ import torch
 from motion_amplification import amplify_video_in_windows
 from optical_flow import compute_motion_map
 from model import TwoStreamCOD
+from pathlib import Path
+
+
+def load_checkpoint(
+    checkpoint_path: str | Path,
+    device: torch.device | str | None = None,
+    base_ch: int = 32,
+) -> TwoStreamCOD:
+    """
+    Loads a TwoStreamCOD model from a checkpoint file.
+    Handles both plain state_dict and dicts with a model key ('model_state', 'model', etc.).
+    """
+    if device is None:
+        target_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    elif isinstance(device, str):
+        target_device = torch.device(device)
+    else:
+        target_device = device
+
+    p = Path(checkpoint_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+    try:
+        ckpt = torch.load(str(p), map_location=target_device, weights_only=False)
+    except TypeError:
+        ckpt = torch.load(str(p), map_location=target_device)
+
+    meta = {}
+    if isinstance(ckpt, dict):
+        known_keys = ("model_state", "model", "state_dict", "model_state_dict")
+        model_key = next((k for k in known_keys if k in ckpt), None)
+        if model_key is not None:
+            state_dict = ckpt[model_key]
+            meta = {k: v for k, v in ckpt.items() if k != model_key}
+        else:
+            state_dict = ckpt
+    else:
+        state_dict = ckpt
+
+    if isinstance(meta, dict):
+        if "base_ch" in meta and isinstance(meta["base_ch"], int):
+            base_ch = meta["base_ch"]
+        elif "args" in meta and hasattr(meta["args"], "base_ch"):
+            base_ch = getattr(meta["args"], "base_ch")
+
+    if isinstance(state_dict, dict):
+        state_dict = {
+            (k[7:] if k.startswith("module.") else k): v
+            for k, v in state_dict.items()
+        }
+
+    model = TwoStreamCOD(base_ch=base_ch).to(target_device)
+    model.load_state_dict(state_dict)
+    model.eval()
+    setattr(model, "checkpoint_meta", meta)
+    return model
+
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
@@ -91,9 +149,7 @@ def main():
     )
 
     print("Loading model ...")
-    model = TwoStreamCOD(base_ch=args.base_ch).to(device)
-    model.load_state_dict(torch.load(args.checkpoint, map_location=device))
-    model.eval()
+    model = load_checkpoint(args.checkpoint, device=device, base_ch=args.base_ch)
 
     h, w = frames[0].shape[:2]
     writer = cv2.VideoWriter(

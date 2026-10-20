@@ -20,7 +20,10 @@ import torch
 from torch.utils.data import DataLoader
 
 from dataset import MoCAMaskDataset
-from model import TwoStreamCOD
+try:
+    from infer_demo import load_checkpoint
+except ImportError:
+    from camo_vcod.infer_demo import load_checkpoint
 from metrics import evaluate_all
 
 
@@ -40,9 +43,7 @@ def main():
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False, num_workers=2)
     print(f"Evaluating on {len(dataset)} samples.")
 
-    model = TwoStreamCOD(base_ch=args.base_ch).to(device)
-    model.load_state_dict(torch.load(args.checkpoint, map_location=device))
-    model.eval()
+    model = load_checkpoint(args.checkpoint, device=device, base_ch=args.base_ch)
 
     all_metrics = []
     with torch.no_grad():

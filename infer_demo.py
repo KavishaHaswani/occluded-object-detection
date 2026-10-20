@@ -41,15 +41,96 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float32)
 _MODEL_CACHE: dict[tuple[str, int, str], TwoStreamCOD] = {}
 
 
-def get_cached_model(checkpoint_path: str, base_ch: int, device: torch.device) -> TwoStreamCOD:
+def load_checkpoint(
+    checkpoint_path: str | Path,
+    device: torch.device | str | None = None,
+    base_ch: int = 32,
+) -> TwoStreamCOD:
+    """
+    Loads a TwoStreamCOD model from a checkpoint file.
+
+    Handles both formats:
+      1. Plain state_dict (collections.OrderedDict or dict mapping parameter names to tensors).
+      2. Wrapped checkpoint dict containing a model key (e.g., 'model_state', 'model',
+         'state_dict', or 'model_state_dict') alongside optional metadata (e.g., 'epoch',
+         'val_IoU', 'base_ch').
+
+    Also handles:
+      - Automatically extracting 'base_ch' from metadata if present.
+      - Stripping 'module.' prefix if the model was saved with DataParallel/DistributedDataParallel.
+      - Safe weights unpickling across PyTorch versions (handles weights_only).
+
+    Returns:
+      TwoStreamCOD model in eval mode on the target device.
+    """
+    if device is None:
+        target_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    elif isinstance(device, str):
+        target_device = torch.device(device)
+    else:
+        target_device = device
+
+    p = Path(checkpoint_path)
+    if not p.exists():
+        raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
+
+    try:
+        ckpt = torch.load(str(p), map_location=target_device, weights_only=False)
+    except TypeError:
+        ckpt = torch.load(str(p), map_location=target_device)
+
+    meta = {}
+    if isinstance(ckpt, dict):
+        known_keys = ("model_state", "model", "state_dict", "model_state_dict")
+        model_key = next((k for k in known_keys if k in ckpt), None)
+        if model_key is not None:
+            state_dict = ckpt[model_key]
+            meta = {k: v for k, v in ckpt.items() if k != model_key}
+        else:
+            state_dict = ckpt
+    else:
+        state_dict = ckpt
+
+    # Extract base_ch from metadata if present
+    if isinstance(meta, dict):
+        if "base_ch" in meta and isinstance(meta["base_ch"], int):
+            base_ch = meta["base_ch"]
+        elif "args" in meta and hasattr(meta["args"], "base_ch"):
+            base_ch = getattr(meta["args"], "base_ch")
+
+    # Strip 'module.' prefix if present
+    if isinstance(state_dict, dict):
+        state_dict = {
+            (k[7:] if k.startswith("module.") else k): v
+            for k, v in state_dict.items()
+        }
+
+    model = TwoStreamCOD(base_ch=base_ch).to(target_device)
+    model.load_state_dict(state_dict)
+    model.eval()
+    setattr(model, "checkpoint_meta", meta)
+    return model
+
+
+def get_cached_model(
+    checkpoint_path: str | Path,
+    base_ch: int = 32,
+    device: torch.device | str | None = None,
+) -> TwoStreamCOD:
     """Retrieves a cached model instance or loads and caches it."""
-    cache_key = (os.path.abspath(checkpoint_path), base_ch, str(device))
+    if device is None:
+        target_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    elif isinstance(device, str):
+        target_device = torch.device(device)
+    else:
+        target_device = device
+
+    resolved_path = os.path.abspath(str(checkpoint_path))
+    cache_key = (resolved_path, base_ch, str(target_device))
     if cache_key in _MODEL_CACHE:
         return _MODEL_CACHE[cache_key]
 
-    model = TwoStreamCOD(base_ch=base_ch).to(device)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=device))
-    model.eval()
+    model = load_checkpoint(resolved_path, device=target_device, base_ch=base_ch)
     _MODEL_CACHE[cache_key] = model
     return model
 
