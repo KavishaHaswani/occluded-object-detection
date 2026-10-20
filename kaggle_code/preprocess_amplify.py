@@ -58,6 +58,7 @@ from __future__ import annotations
 
 import argparse
 import os
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import cv2
@@ -161,16 +162,31 @@ def process_sequence(seq_dir: Path, cache_root: Path, fps: float, window_size: i
             raise
 
 
+def _process_sequence_star(kwargs):
+    return process_sequence(**kwargs)
+
+
 def process_dataset(data_root: Path, cache_root: Path, dataset_name: str, fps: float, window_size: int,
                     overlap: int, motion_size: int = 0, save_amplified: bool = False,
-                    no_amplify: bool = False):
+                    no_amplify: bool = False, num_workers: int = 1):
     dataset_cache_root = cache_root / dataset_name
     sequences = list_sequences(data_root)
     print(f"[{dataset_name}] found {len(sequences)} sequences under {data_root}")
-    for seq_dir in sequences:
-        print(f"[{dataset_name}] processing {seq_dir.name} ...")
-        process_sequence(seq_dir, dataset_cache_root, fps, window_size, overlap, motion_size,
-                         save_amplified, no_amplify)
+    tasks = [
+        dict(seq_dir=seq_dir, cache_root=dataset_cache_root, fps=fps, window_size=window_size,
+             overlap=overlap, motion_size=motion_size, save_amplified=save_amplified,
+             no_amplify=no_amplify)
+        for seq_dir in sequences
+    ]
+    if num_workers and num_workers > 1:
+        print(f"[{dataset_name}] processing with {num_workers} workers ...", flush=True)
+        with ProcessPoolExecutor(max_workers=num_workers) as ex:
+            for _ in ex.map(_process_sequence_star, tasks):
+                pass
+    else:
+        for task in tasks:
+            print(f"[{dataset_name}] processing {task['seq_dir'].name} ...")
+            process_sequence(**task)
 
 
 def parse_named_roots(items: list[str]) -> dict[str, str]:
@@ -201,6 +217,9 @@ def main():
     parser.add_argument("--no_amplify", action="store_true",
                          help="ABlation: skip Eulerian amplification and compute optical flow directly on the "
                               "raw frames (use a separate --cache_root so raw/amplified maps never mix).")
+    parser.add_argument("--num_workers", type=int, default=1,
+                         help="Parallel worker processes across sequences (per dataset). 1 = sequential. "
+                              "Use os.cpu_count() on Kaggle to parallelize the amplification.")
     args = parser.parse_args()
 
     if not args.data_root and not args.data_roots:
@@ -217,7 +236,7 @@ def main():
 
     for dataset_name, path in named_roots.items():
         process_dataset(Path(path), cache_root, dataset_name, args.fps, args.window_size, args.overlap,
-                        args.motion_size, args.save_amplified, args.no_amplify)
+                        args.motion_size, args.save_amplified, args.no_amplify, args.num_workers)
 
     mode = "raw (unamplified)" if args.no_amplify else "amplified"
     print(f"\nDone. Cached {mode} motion maps under {cache_root}/<dataset_name>/...")
